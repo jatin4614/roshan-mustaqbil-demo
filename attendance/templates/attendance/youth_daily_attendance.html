@@ -1,0 +1,35 @@
+{% extends "index.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="oh-wrapper space-y-6">
+    <header class="rounded-2xl bg-gradient-to-r from-primary-700 to-primary-500 px-6 py-6 text-white shadow-card">
+        <p class="text-sm font-medium text-primary-100">{% trans "Roshan Mustaqbil" %}</p>
+        <div class="mt-1 flex flex-wrap items-end justify-between gap-4">
+            <div><h1 class="text-2xl font-bold">{% trans "Daily Attendance" %}</h1><p class="mt-1 text-sm text-primary-100">{% trans "Mark each student's daily presence in one quick check-in." %}</p></div>
+            <form method="get" class="rounded-xl bg-white/15 p-2 backdrop-blur-sm"><label class="sr-only" for="attendance-date">{% trans "Attendance date" %}</label><input id="attendance-date" class="rounded-lg border-0 bg-white px-3 py-2 text-sm text-dark-700" type="date" name="date" value="{{ selected_date }}" onchange="this.form.submit()"></form>
+        </div>
+    </header>
+
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <article class="rounded-2xl border border-blue-100 bg-white p-5 shadow-card"><p class="text-sm text-neutral-500">{% trans "Students" %}</p><p class="mt-2 text-3xl font-bold text-blue-700">{{ total_students }}</p></article>
+        <article class="rounded-2xl border border-emerald-100 bg-white p-5 shadow-card"><p class="text-sm text-neutral-500">{% trans "Marked Present" %}</p><p class="mt-2 text-3xl font-bold text-emerald-600">{{ present_count }}</p></article>
+        <article class="rounded-2xl border border-rose-100 bg-white p-5 shadow-card"><p class="text-sm text-neutral-500">{% trans "Marked Absent" %}</p><p class="mt-2 text-3xl font-bold text-rose-600">{{ absent_count }}</p></article>
+    </section>
+
+    <form method="post" class="overflow-hidden rounded-2xl bg-white shadow-card">
+        {% csrf_token %}<input type="hidden" name="date" value="{{ selected_date }}">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 px-6 py-4">
+            <div><h2 class="font-bold text-dark-900">{% trans "Attendance register" %}</h2><p class="mt-1 text-sm text-neutral-500">{% trans "Start with all students present, then mark exceptions." %}</p></div>
+            <button type="button" class="rounded-lg border border-primary-200 bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-100" onclick="document.querySelectorAll('select[name^=status_]').forEach((field) => field.value = 'Present')">{% trans "Mark all present" %}</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[780px] text-left text-sm">
+                <thead class="bg-neutral-50 text-xs font-semibold uppercase tracking-wide text-neutral-500"><tr><th class="px-6 py-3">{% trans "Student" %}</th><th class="px-4 py-3">{% trans "Student ID" %}</th><th class="px-4 py-3">{% trans "Goal" %}</th><th class="px-4 py-3">{% trans "Status" %}</th><th class="px-4 py-3">{% trans "Optional remark" %}</th></tr></thead>
+                <tbody class="divide-y divide-neutral-100">{% for row in rows %}<tr class="transition hover:bg-primary-50/40"><td class="px-6 py-4 font-semibold text-dark-900">{{ row.student.get_full_name }}</td><td class="px-4 py-4 text-neutral-600">{{ row.student.badge_id|default:"—" }}</td><td class="px-4 py-4 text-neutral-700">{{ row.goal.goal }}</td><td class="px-4 py-4"><select class="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-dark-700" name="status_{{ row.student.id }}"><option value="Present" {% if not row.absent %}selected{% endif %}>{% trans "Present" %}</option><option value="Absent" {% if row.absent %}selected{% endif %}>{% trans "Absent" %}</option></select></td><td class="px-4 py-4"><input class="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm" name="remarks_{{ row.student.id }}" value="{{ row.remarks }}" placeholder="{% trans 'Reason or note' %}"></td></tr>{% empty %}<tr><td colspan="5" class="px-6 py-12 text-center text-neutral-500">{% trans "No students are enrolled yet." %}</td></tr>{% endfor %}</tbody>
+            </table>
+        </div>
+        <div class="flex justify-end border-t border-neutral-100 px-6 py-4"><button class="oh-btn oh-btn--secondary px-6">{% trans "Save attendance" %}</button></div>
+    </form>
+</div>
+{% endblock %}

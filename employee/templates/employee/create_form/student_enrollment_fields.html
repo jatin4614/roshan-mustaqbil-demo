@@ -1,0 +1,89 @@
+{% load i18n %}
+<hr class="mt-4 mb-3">
+<h5 class="mb-3">{% trans "Career Goal & Preparation" %}</h5>
+<div class="row">
+    <div class="col-lg-6">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_institution">{% trans "School / College / Institution" %}</label>
+            <input class="form-control" id="student_institution" name="student_institution" value="{{ request.POST.student_institution|default:'' }}">
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_programme_batch">{% trans "Programme / Batch" %}</label>
+            <input class="form-control" id="student_programme_batch" name="student_programme_batch" value="{{ request.POST.student_programme_batch|default:'' }}">
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_joining_date">{% trans "Joining Date" %}</label>
+            <input class="form-control" id="student_joining_date" name="student_joining_date" type="date" value="{{ request.POST.student_joining_date|default:'' }}">
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_mentor_counsellor">{% trans "Mentor / Counsellor" %}</label>
+            <input class="form-control" id="student_mentor_counsellor" name="student_mentor_counsellor" value="{{ request.POST.student_mentor_counsellor|default:'' }}">
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_status">{% trans "Student Status" %}</label>
+            <select class="form-control" id="student_status" name="student_status">
+                <option value="Active">{% trans "Active" %}</option>
+                <option value="On Hold">{% trans "On Hold" %}</option>
+                <option value="Completed">{% trans "Completed" %}</option>
+            </select>
+        </div>
+    </div>
+</div>
+<h5 class="mt-4 mb-3">{% trans "Guardian Information" %}</h5>
+<div class="row">
+    <div class="col-lg-6">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_guardian_name">{% trans "Parent / Guardian Name" %}</label>
+            <input class="form-control" id="student_guardian_name" name="student_guardian_name" value="{{ request.POST.student_guardian_name|default:'' }}">
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_guardian_contact">{% trans "Parent / Guardian Contact" %}</label>
+            <input class="form-control" id="student_guardian_contact" name="student_guardian_contact" value="{{ request.POST.student_guardian_contact|default:'' }}">
+        </div>
+    </div>
+</div>
+<h5 class="mt-4 mb-3">{% trans "Career Goal" %}</h5>
+<div class="row">
+    <div class="col-lg-6">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_goal">{% trans "Primary Goal" %}</label>
+            <select class="form-control" id="student_goal" name="student_goal" onchange="document.getElementById('defenceSchemeGroup').style.display=this.value==='Defence'?'block':'none'">
+                <option value="">{% trans "Select goal" %}</option><option>Defence</option><option>UPSC / Civil Services</option><option>NEET UG</option><option>NEET PG</option>
+            </select>
+        </div>
+    </div>
+    <div class="col-lg-6" id="defenceSchemeGroup" style="display:none">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_defence_entry_scheme">{% trans "Defence Entry Scheme" %}</label>
+            <select class="form-control" id="student_defence_entry_scheme" name="student_defence_entry_scheme"><option value="">{% trans "Select scheme" %}</option><option>NDA</option><option>TES</option><option>Other Indian Army Entry Scheme</option></select>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_preparation_status">{% trans "Preparation Status" %}</label>
+            <select class="form-control" id="student_preparation_status" name="student_preparation_status"><option>Not Started</option><option>Preparing</option><option>On Track</option><option>Needs Attention</option><option>Exam Ready</option><option>Achieved</option></select>
+        </div>
+    </div>
+    <div class="col-lg-2">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_progress_percentage">{% trans "Initial Progress %" %}</label>
+            <input class="form-control" id="student_progress_percentage" name="student_progress_percentage" type="number" min="0" max="100" value="0">
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="oh-input__group">
+            <label class="oh-label" for="student_admin_remarks">{% trans "Remarks" %}</label>
+            <textarea class="form-control" id="student_admin_remarks" name="student_admin_remarks" rows="2"></textarea>
+        </div>
+    </div>
+</div>

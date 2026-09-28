@@ -1,0 +1,251 @@
+{% extends "index.html" %}
+{% load i18n %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<div class="oh-wrapper space-y-5">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+            <p class="text-sm font-medium text-primary-600">{% trans "Roshan Mustaqbil" %}</p>
+            <h1 class="text-2xl font-bold text-dark-900">{% trans "Student Progress & Attendance Dashboard" %}</h1>
+            <p class="text-sm text-dark-300">{% trans "A live overview of attendance, goals, and student support needs." %}</p>
+        </div>
+        <div class="rounded-lg bg-primary-100 px-3 py-2 text-xs font-medium text-primary-700">
+            {% blocktrans with threshold=attendance_attention_threshold %}Attention threshold: {{ threshold }}% attendance{% endblocktrans %}
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div class="rounded-xl border border-primary-100 bg-white p-5 shadow-card">
+            <p class="text-sm text-dark-300">{% trans "Total Students" %}</p>
+            <p id="totalStudents" class="mt-2 text-3xl font-bold text-dark-900">—</p>
+        </div>
+        <div class="rounded-xl border border-green-100 bg-white p-5 shadow-card">
+            <p class="text-sm text-dark-300">{% trans "Present Today" %}</p>
+            <p id="presentToday" class="mt-2 text-3xl font-bold text-green-600">—</p>
+        </div>
+        <div class="rounded-xl border border-blue-100 bg-white p-5 shadow-card">
+            <p class="text-sm text-dark-300">{% trans "Monthly Attendance" %}</p>
+            <p id="monthlyAttendance" class="mt-2 text-3xl font-bold text-blue-600">—</p>
+        </div>
+        <div class="rounded-xl border border-purple-100 bg-white p-5 shadow-card">
+            <p class="text-sm text-dark-300">{% trans "Active Goals" %}</p>
+            <p id="activeGoals" class="mt-2 text-3xl font-bold text-purple-600">—</p>
+        </div>
+        <div class="rounded-xl border border-emerald-100 bg-white p-5 shadow-card">
+            <p class="text-sm text-dark-300">{% trans "Goals Achieved" %}</p>
+            <p id="goalsAchieved" class="mt-2 text-3xl font-bold text-emerald-600">—</p>
+        </div>
+        <div class="rounded-xl border border-amber-100 bg-white p-5 shadow-card">
+            <p class="text-sm text-dark-300">{% trans "Students Needing Attention" %}</p>
+            <p id="studentsNeedingAttention" class="mt-2 text-3xl font-bold text-amber-600">—</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <section class="rounded-xl bg-white p-5 shadow-card">
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-dark-900">{% trans "Attendance Trend" %}</h2>
+                    <p class="text-xs text-dark-300">{% trans "Students recorded present over the last 30 days" %}</p>
+                </div>
+            </div>
+            <div id="attendanceTrendChart" class="min-h-[280px]"></div>
+        </section>
+        <section class="rounded-xl bg-white p-5 shadow-card">
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold text-dark-900">{% trans "Today’s Attendance" %}</h2>
+                <p class="text-xs text-dark-300">{% trans "Present versus not yet recorded" %}</p>
+            </div>
+            <div id="attendanceStatusChart" class="min-h-[280px]"></div>
+        </section>
+        <section class="rounded-xl bg-white p-5 shadow-card">
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold text-dark-900">{% trans "Goal Progress Status" %}</h2>
+                <p class="text-xs text-dark-300">{% trans "Current student goal distribution" %}</p>
+            </div>
+            <div id="goalStatusChart" class="min-h-[280px]"></div>
+        </section>
+        <section class="rounded-xl bg-white p-5 shadow-card">
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold text-dark-900">{% trans "Students by Aim Category" %}</h2>
+                <p class="text-xs text-dark-300">{% trans "Primary development aims recorded at enrolment" %}</p>
+            </div>
+            <div id="aimCategoryChart" class="min-h-[280px]"></div>
+        </section>
+    </div>
+
+    <div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
+        <section class="xl:col-span-2 overflow-hidden rounded-xl bg-white shadow-card">
+            <div class="flex items-center justify-between border-b border-secondary-100 px-5 py-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-dark-900">{% trans "Student Progress Overview" %}</h2>
+                    <p class="text-xs text-dark-300">{% trans "Attendance and goal progress by student" %}</p>
+                </div>
+                <a href="{% url 'employee-view' %}" class="text-sm font-medium text-primary-600 hover:text-primary-800">{% trans "View students" %}</a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[900px] text-left text-sm">
+                    <thead class="bg-secondary-50 text-xs uppercase text-dark-300">
+                        <tr>
+                            <th class="px-5 py-3">{% trans "Student" %}</th>
+                            <th class="px-4 py-3">{% trans "Programme / Batch" %}</th>
+                            <th class="px-4 py-3">{% trans "Primary Aim" %}</th>
+                            <th class="px-4 py-3">{% trans "Attendance" %}</th>
+                            <th class="px-4 py-3">{% trans "Goal Progress" %}</th>
+                            <th class="px-4 py-3">{% trans "Status" %}</th>
+                            <th class="px-4 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="studentProgressRows" class="divide-y divide-secondary-100"></tbody>
+                </table>
+            </div>
+        </section>
+        <section class="rounded-xl bg-white p-5 shadow-card">
+            <h2 class="text-lg font-semibold text-dark-900">{% trans "Recent Student Activity" %}</h2>
+            <p class="mb-4 text-xs text-dark-300">{% trans "Latest attendance and goal updates" %}</p>
+            <div id="recentActivity" class="space-y-4"></div>
+        </section>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const chartOptions = {
+            chart: { toolbar: { show: false }, fontFamily: 'inherit' },
+            noData: { text: '{% trans "No recorded data yet" %}' },
+            dataLabels: { enabled: false },
+            legend: { position: 'bottom' },
+        };
+        const chartColors = ['#e54f38', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7'];
+        const studentDetailUrl = '{% url "employee-view-individual" 0 %}';
+        const text = (value) => document.createTextNode(value || '—');
+        const formatDate = (value) => value ? new Date(value + 'T00:00:00').toLocaleDateString() : '—';
+
+        function renderCharts(data) {
+            new ApexCharts(document.querySelector('#attendanceTrendChart'), {
+                ...chartOptions,
+                chart: { ...chartOptions.chart, type: 'area', height: 280 },
+                series: [{ name: '{% trans "Present" %}', data: data.attendance_trend.map(item => item.present) }],
+                colors: ['#e54f38'],
+                stroke: { curve: 'smooth', width: 3 },
+                fill: { type: 'gradient', gradient: { opacityFrom: 0.35, opacityTo: 0.03 } },
+                xaxis: { categories: data.attendance_trend.map(item => item.date.slice(5)) },
+                yaxis: { min: 0, forceNiceScale: true },
+            }).render();
+            new ApexCharts(document.querySelector('#attendanceStatusChart'), {
+                ...chartOptions,
+                chart: { ...chartOptions.chart, type: 'donut', height: 280 },
+                series: [data.attendance_status.present, data.attendance_status.absent],
+                labels: ['{% trans "Present" %}', '{% trans "Not recorded" %}'],
+                colors: ['#22c55e', '#f59e0b'],
+                plotOptions: { pie: { donut: { labels: { show: true, total: { show: true, label: '{% trans "Students" %}' } } } } },
+            }).render();
+            new ApexCharts(document.querySelector('#goalStatusChart'), {
+                ...chartOptions,
+                chart: { ...chartOptions.chart, type: 'donut', height: 280 },
+                series: data.goal_status.map(item => item.count),
+                labels: data.goal_status.map(item => item.label),
+                colors: chartColors,
+            }).render();
+            new ApexCharts(document.querySelector('#aimCategoryChart'), {
+                ...chartOptions,
+                chart: { ...chartOptions.chart, type: 'bar', height: 280 },
+                series: [{ name: '{% trans "Students" %}', data: data.aim_categories.map(item => item.count) }],
+                colors: ['#3b82f6'],
+                plotOptions: { bar: { borderRadius: 5, horizontal: true } },
+                xaxis: { categories: data.aim_categories.map(item => item.label) },
+            }).render();
+        }
+
+        function renderProgressRows(rows) {
+            const container = document.querySelector('#studentProgressRows');
+            if (!rows.length) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 7;
+                cell.className = 'px-5 py-8 text-center text-dark-300';
+                cell.appendChild(text('{% trans "No students enrolled yet." %}'));
+                row.appendChild(cell);
+                container.appendChild(row);
+                return;
+            }
+            rows.forEach((rowData) => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-secondary-50';
+                const values = [
+                    `${rowData.student} (${rowData.student_id})`,
+                    rowData.programme,
+                    rowData.primary_aim,
+                    `${rowData.attendance_percent}%`,
+                    `${rowData.goal_progress}%`,
+                    rowData.goal_status,
+                ];
+                values.forEach((value, index) => {
+                    const cell = document.createElement('td');
+                    cell.className = 'px-4 py-3 text-dark-600';
+                    if (index === 0) cell.className = 'px-5 py-3 font-medium text-dark-900';
+                    if (index === 5) {
+                        const badge = document.createElement('span');
+                        badge.className = 'rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700';
+                        badge.appendChild(text(value));
+                        cell.appendChild(badge);
+                    } else {
+                        cell.appendChild(text(value));
+                    }
+                    row.appendChild(cell);
+                });
+                const action = document.createElement('td');
+                action.className = 'px-4 py-3';
+                const link = document.createElement('a');
+                link.href = studentDetailUrl.replace(/0\/$/, `${rowData.id}/`);
+                link.className = 'font-medium text-primary-600 hover:text-primary-800';
+                link.appendChild(text('{% trans "View profile" %}'));
+                action.appendChild(link);
+                row.appendChild(action);
+                container.appendChild(row);
+            });
+        }
+
+        function renderActivity(items) {
+            const container = document.querySelector('#recentActivity');
+            if (!items.length) {
+                const empty = document.createElement('p');
+                empty.className = 'py-6 text-center text-sm text-dark-300';
+                empty.appendChild(text('{% trans "No recent activity yet." %}'));
+                container.appendChild(empty);
+                return;
+            }
+            items.forEach((item) => {
+                const entry = document.createElement('div');
+                entry.className = 'border-l-2 border-primary-500 pl-3';
+                const description = document.createElement('p');
+                description.className = 'text-sm text-dark-700';
+                description.appendChild(text(item.text));
+                const date = document.createElement('p');
+                date.className = 'mt-1 text-xs text-dark-300';
+                date.appendChild(text(formatDate(item.date)));
+                entry.append(description, date);
+                container.appendChild(entry);
+            });
+        }
+
+        fetch('{% url "youth-centre-dashboard-data" %}')
+            .then(response => response.ok ? response.json() : Promise.reject(response))
+            .then((data) => {
+                document.querySelector('#totalStudents').textContent = data.kpis.total_students;
+                document.querySelector('#presentToday').textContent = data.kpis.present_today;
+                document.querySelector('#monthlyAttendance').textContent = `${data.kpis.monthly_attendance_percent}%`;
+                document.querySelector('#activeGoals').textContent = data.kpis.active_goals;
+                document.querySelector('#goalsAchieved').textContent = data.kpis.goals_achieved;
+                document.querySelector('#studentsNeedingAttention').textContent = data.kpis.students_needing_attention;
+                renderCharts(data);
+                renderProgressRows(data.progress_rows);
+                renderActivity(data.recent_activity);
+            })
+            .catch(() => {
+                document.querySelector('#studentProgressRows').innerHTML = '<tr><td colspan="7" class="px-5 py-8 text-center text-dark-300">{% trans "Dashboard data could not be loaded." %}</td></tr>';
+            });
+    })();
+</script>
+{% endblock content %}
