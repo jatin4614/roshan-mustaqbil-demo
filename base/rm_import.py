@@ -16,7 +16,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from attendance.models import Attendance
-from base.rm import normalize_phone, normalize_qualification, student_queryset, valid_mobile
+from base.rm import ENROLLMENT_VISIT, normalize_phone, normalize_qualification, student_queryset, valid_mobile
 from base.rm_access import rm_required
 from base.rm_common import csv_response
 from employee.models import Employee, StudentProfile
@@ -119,8 +119,14 @@ def _check_students(rows):
             values["dob"] = _parse_date(row.get("date_of_birth"))
         except ValueError as error:
             errors.append(str(error))
+        # Students enroll in person, so the enrollment date is a real visit:
+        # it's required, and it can't be in the future.
         try:
-            values["registration_date"] = _parse_date(row.get("enrollment_date")) or timezone.localdate()
+            values["registration_date"] = _parse_date(row.get("enrollment_date"))
+            if not values["registration_date"]:
+                errors.append("enrollment date is missing (an approximate date is fine)")
+            elif values["registration_date"] > timezone.localdate():
+                errors.append("enrollment date is in the future")
         except ValueError as error:
             errors.append(str(error))
         if not values.get("dob") and row.get("age", "").isdigit():
@@ -271,6 +277,14 @@ def _import_students(checked):
             registration_date=date.fromisoformat(values["registration_date"]) if values["registration_date"] else timezone.localdate(),
         ))
     StudentProfile.objects.bulk_create(profiles, batch_size=200)
+    # Each student came in to enroll: record that day as their first visit.
+    Attendance.objects.bulk_create([
+        Attendance(
+            employee_id=profile.employee, attendance_date=profile.registration_date, attendance_clock_in_date=profile.registration_date,
+            attendance_worked_hour="00:00", minimum_hour="00:00", request_description=ENROLLMENT_VISIT,
+        )
+        for profile in profiles
+    ], batch_size=500, ignore_conflicts=True)
     return len(profiles)
 
 

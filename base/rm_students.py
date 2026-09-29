@@ -15,17 +15,18 @@ from django.views.decorators.http import require_POST
 
 from base import rm_charts as charts
 from base.rm import (
-    AGE_BUCKETS, ALL_STATUSES, ENGAGEMENT_HELP, ENGAGEMENT_LABELS, GOAL_KEYS, LAPSED, MOVED_ON, NO_STATUS,
-    NO_VALUE, NOT_RECORDED, QUALIFICATIONS, RETRY_RESULTS, age_group, age_q, engagement_q,
-    engagement_row, engagement_status, has_role, initials, mark_student_present, needs_call_q,
-    normalize_phone, record_followup, rm_visits, student_queryset, target_label, valid_mobile,
-    with_last_visit,
+    AGE_BUCKETS, ALL_STATUSES, ENGAGEMENT_HELP, ENGAGEMENT_LABELS, ENROLLMENT_VISIT, GOAL_KEYS, LAPSED,
+    MOVED_ON, NO_RETURN_HELP, NO_RETURN_LABEL, NO_STATUS, NO_VALUE, NOT_RECORDED, QUALIFICATIONS, RETRY_RESULTS,
+    age_group, age_q, engagement_q, engagement_row, engagement_status, has_role, initials, is_no_return,
+    mark_student_present, needs_call_q, no_return_q, normalize_phone, record_enrollment_visit, record_followup,
+    rm_visits, student_queryset, target_label, valid_mobile, with_last_visit,
 )
 from base.rm_access import rm_required
 from base.rm_common import (
     GENDER_LABELS, OUTCOME_LABELS, PAGE_SIZE, PREP_LABELS, PURPOSE_LABELS, STATUS_LABELS,
     csv_response, today_label,
 )
+from attendance.models import Attendance
 from employee.models import Employee, StudentFollowUp, StudentProfile
 
 SORTS = {
@@ -86,7 +87,7 @@ class StudentRegistrationForm(forms.Form):
     expectations = forms.CharField(required=False, label="What do they expect from RM?", widget=forms.Textarea(attrs={"rows": 2}))
     guardian_name = forms.CharField(required=False, label="Guardian name")
     guardian_phone = PhoneField(max_length=25, required=False, label="Guardian phone")
-    registration_date = forms.DateField(required=False, initial=date.today, label="Enrollment date", widget=forms.DateInput(attrs={"type": "date"}), help_text="Change this when entering an older registration.")
+    registration_date = forms.DateField(required=False, initial=date.today, label="Enrollment date", widget=forms.DateInput(attrs={"type": "date"}), help_text="The day they came in to enroll. It counts as a visit, so they're marked present that day. Change it only when entering an older paper registration.")
     notes = forms.CharField(required=False, label="Notes", widget=forms.Textarea(attrs={"rows": 2}))
     confirm_new = forms.BooleanField(required=False, label="This is a different student. Enroll anyway.")
 
@@ -173,7 +174,7 @@ class CallForm(forms.Form):
 # ── Student list ─────────────────────────────────────────────────────────
 
 FILTER_FIELDS = (
-    "q", "engagement", "goal", "target", "purpose", "gender", "age", "locality", "requirement", "qualification",
+    "q", "engagement", "returned", "goal", "target", "purpose", "gender", "age", "locality", "requirement", "qualification",
     "prep_stage", "registered", "contacted", "current_status", "outcome", "call", "missing", "sort",
 )
 
@@ -183,7 +184,7 @@ def _filtered_students(request, inactive_only=False, today=None):
     filters = {field: request.GET.get(field, "").strip() for field in FILTER_FIELDS}
     queryset = with_last_visit(student_queryset(), today)
     if inactive_only:
-        queryset = queryset.filter(engagement_q("Inactive", today) | engagement_q("Never Attended", today))
+        queryset = queryset.filter(engagement_q("Inactive", today))
     for token in filters["q"].split():
         match = Q(employee_first_name__icontains=token) | Q(employee_last_name__icontains=token) | Q(badge_id__icontains=token) | Q(rm_profile__guardian_name__icontains=token)
         digits = normalize_phone(token)
@@ -192,6 +193,8 @@ def _filtered_students(request, inactive_only=False, today=None):
         queryset = queryset.filter(match)
     if filters["engagement"] in ALL_STATUSES:
         queryset = queryset.filter(engagement_q(filters["engagement"], today))
+    if filters["returned"] == "no":
+        queryset = queryset.filter(no_return_q(today))
     simple = {"purpose": "rm_profile__purpose_of_rm", "gender": "gender", "prep_stage": "rm_profile__prep_stage", "outcome": "rm_profile__outcome"}
     for field, lookup in simple.items():
         if filters[field]:
@@ -251,7 +254,7 @@ def _phone_counts():
 
 
 CHIP_NAMES = {
-    "q": "Search", "engagement": "Status", "goal": "Goal", "target": "Exam", "purpose": "Reason", "gender": "Gender",
+    "q": "Search", "engagement": "Status", "returned": "Came back", "goal": "Goal", "target": "Exam", "purpose": "Reason", "gender": "Gender",
     "age": "Age", "locality": "Area", "requirement": "Needs", "qualification": "Qualification", "prep_stage": "Stage",
     "registered": "Enrolled", "contacted": "Contacted", "current_status": "Doing now", "outcome": "Moved on",
     "call": "Calls", "missing": "Missing",
@@ -263,6 +266,7 @@ def _chip_value(field, value):
         "engagement": ENGAGEMENT_LABELS, "gender": GENDER_LABELS, "purpose": PURPOSE_LABELS, "prep_stage": PREP_LABELS,
         "registered": REGISTERED_RANGES, "contacted": CONTACTED, "outcome": OUTCOME_LABELS, "missing": MISSING,
         "current_status": {NO_STATUS: "Not followed up yet", **STATUS_LABELS}, "call": {"due": "Waiting for a call"},
+        "returned": {"no": "No, only came to enroll"},
     }.get(field, {})
     if value == NO_VALUE:
         return NOT_RECORDED
@@ -284,18 +288,18 @@ def _export_students(queryset, today):
     response, writer = csv_response(f"rm-students-{today.isoformat()}.csv", [
         "Registration number", "Name", "Phone", "Gender", "Date of birth", "Age group", "Area", "Address", "Qualification",
         "School / college", "Career goal", "Exam", "Preparation stage", "Exam year", "Reason for joining", "Support needed",
-        "Expectations", "Status", "Last visit", "Enrolled on", "Guardian name", "Guardian phone", "Doing now",
+        "Expectations", "Status", "Visits", "Last visit", "Enrolled on", "Guardian name", "Guardian phone", "Doing now",
         "Last contacted", "Call again on", "Follow-up notes", "Moved on",
     ])
     for student in queryset.iterator():
         profile = student.rm_profile
-        status = engagement_status(student.last_visit, today, profile.outcome)
+        status = engagement_status(student.last_visit, today, profile.outcome, profile.registration_date)
         writer.writerow([
             student.badge_id, student.get_full_name(), student.phone, GENDER_LABELS.get(student.gender, ""), student.dob or "",
             age_group(student, today), profile.locality, student.address or "", student.qualification or "", profile.institution,
             profile.career_goal, target_label(profile), PREP_LABELS.get(profile.prep_stage, ""), profile.target_year or "",
             PURPOSE_LABELS.get(profile.purpose_of_rm, profile.purpose_of_rm), "; ".join(profile.requirements or []),
-            profile.expectations, ENGAGEMENT_LABELS[status], student.last_visit or "", profile.registration_date,
+            profile.expectations, ENGAGEMENT_LABELS[status], student.visits, student.last_visit or "", profile.registration_date,
             profile.guardian_name, profile.guardian_phone, STATUS_LABELS.get(profile.current_status, ""),
             profile.last_followup_date or "", profile.next_call_date or "", profile.followup_notes,
             OUTCOME_LABELS.get(profile.outcome, ""),
@@ -317,10 +321,12 @@ def students(request, inactive_only=False):
         row["goal_key"] = GOAL_KEYS.get(student.rm_profile.career_goal, "none")
         row["target"] = target_label(student.rm_profile)
         row["doing_now"] = OUTCOME_LABELS.get(student.rm_profile.outcome) or STATUS_LABELS.get(student.rm_profile.current_status, "")
+        row["visits"] = student.visits
+        row["no_return"] = is_no_return(student.last_visit, student.rm_profile.registration_date, row["status"], today)
         rows.append(row)
     base_url = reverse("rm-inactive-students" if inactive_only else "rm-students")
     query = {key: value for key, value in filters.items() if value and not (key == "sort" and value == "name")}
-    more_fields = ("target", "purpose", "gender", "age", "locality", "requirement", "qualification", "prep_stage", "registered", "contacted", "current_status", "outcome", "missing")
+    more_fields = ("returned", "target", "purpose", "gender", "age", "locality", "requirement", "qualification", "prep_stage", "registered", "contacted", "current_status", "outcome", "missing")
     context = {
         "rows": rows, "page": page, "filters": filters, "inactive_only": inactive_only, "base_url": base_url,
         "query": urlencode(query), "export_url": base_url + "?" + urlencode({**query, "export": "csv"}),
@@ -332,7 +338,8 @@ def students(request, inactive_only=False):
         "requirements": StudentProfile.REQUIREMENT_CHOICES[:-1], "qualifications": QUALIFICATIONS, "prep_stages": StudentProfile.PREP_STAGES,
         "registered_ranges": REGISTERED_RANGES.items(), "contacted_options": CONTACTED.items(), "outcomes": StudentProfile.OUTCOMES,
         "missing_options": MISSING.items(), "sorts": [(key, label) for key, (label, _) in SORTS.items()],
-        "no_status": NO_STATUS, "no_value": NO_VALUE, "status_help": [(ENGAGEMENT_LABELS[s], ENGAGEMENT_HELP[s]) for s in ALL_STATUSES],
+        "no_status": NO_STATUS, "no_value": NO_VALUE, "no_return_label": NO_RETURN_LABEL,
+        "status_help": [(ENGAGEMENT_LABELS[s], ENGAGEMENT_HELP[s]) for s in ALL_STATUSES] + [(NO_RETURN_LABEL, NO_RETURN_HELP)],
     }
     return render(request, "rm/students.html", context)
 
@@ -344,6 +351,17 @@ def _next_registration_number():
     while Employee.objects.filter(badge_id=f"RM-{number:04d}").exists():
         number += 1
     return f"RM-{number:04d}"
+
+
+def _move_enrollment_visit(student, old_day, new_day):
+    """Keep the enrollment visit on the (corrected) enrollment date."""
+    if Attendance.objects.filter(employee_id=student, attendance_date=new_day).exists():
+        return
+    moved = Attendance.objects.filter(employee_id=student, attendance_date=old_day, request_description=ENROLLMENT_VISIT)
+    if moved.exists():
+        moved.update(attendance_date=new_day, attendance_clock_in_date=new_day, attendance_clock_in=None)
+    elif new_day <= timezone.localdate():
+        record_enrollment_visit(student, new_day)
 
 
 def _possible_duplicates(values, student=None):
@@ -401,6 +419,7 @@ def enroll_student(request, student_id=None):
             form.add_error("email", "This email is already registered to another student.")
         else:
             is_new = student is None
+            old_enrollment = student.rm_profile.registration_date if student else None
             student = student or Employee()
             names = values["full_name"].strip().split(maxsplit=1)
             student.badge_id, student.employee_first_name = registration, names[0]
@@ -425,11 +444,18 @@ def enroll_student(request, student_id=None):
             profile.requirements_other = values["requirements_other"] if "Other" in (values.get("requirements") or []) else ""
             profile.registration_date = values.get("registration_date") or profile.registration_date or today
             profile.save()
-            if from_desk and is_new:
-                mark_student_present(student, actor=request.user)
-                messages.success(request, f"{student.get_full_name()} is enrolled as {registration} and marked present.")
-                return redirect("youth-daily-attendance")
-            messages.success(request, f"{student.get_full_name()} is enrolled as {registration}." if is_new else "Student details saved.")
+            if is_new:
+                # Students enroll in person, so they are here today (or were,
+                # on the date of an older paper registration).
+                record_enrollment_visit(student, profile.registration_date, actor=request.user)
+            elif old_enrollment != profile.registration_date:
+                _move_enrollment_visit(student, old_enrollment, profile.registration_date)
+            if is_new:
+                messages.success(request, f"{student.get_full_name()} is enrolled as {registration} and marked present{' for ' + profile.registration_date.strftime('%d %b %Y') if profile.registration_date != today else ''}.")
+                if from_desk:
+                    return redirect("youth-daily-attendance")
+            else:
+                messages.success(request, "Student details saved.")
             return redirect("rm-student-profile", student_id=student.id)
     return render(request, "rm/enroll.html", {"form": form, "student": student, "from_desk": from_desk})
 
@@ -471,6 +497,8 @@ def student_profile(request, student_id):
         "present_today": bool(visit_dates) and visit_dates[0] == today,
         "calendar": charts.visit_calendar(visit_dates, today, weeks=53), "call_form": call_form,
         "calls": profile.followups.select_related("created_by")[:10], "status_labels": STATUS_LABELS,
+        "enrollment_visit": ENROLLMENT_VISIT, "no_return": is_no_return(visit_dates[0] if visit_dates else None, profile.registration_date, engagement["status"], today),
+        "no_return_label": NO_RETURN_LABEL,
         "needs_followup": engagement["status"] in LAPSED, "moved_on": engagement["status"] == MOVED_ON,
         "outcome_label": OUTCOME_LABELS.get(profile.outcome, ""), "can_follow_up": can_follow_up,
         "can_edit": can_follow_up, "gender_label": GENDER_LABELS.get(student.gender, ""),
@@ -481,10 +509,10 @@ def student_profile(request, student_id):
 # ── Follow-up call list ──────────────────────────────────────────────────
 
 QUEUES = (
-    ("missing", "Regulars who missed this week", "Came 3 or more times in the weeks before, but not in the last 7 days. Easiest to bring back."),
+    ("once", NO_RETURN_LABEL, NO_RETURN_HELP + ". A call in the first weeks is what brings most of them back."),
+    ("missing", "Regulars who missed this week", "Came 3 or more times in the weeks before, but not in the last 7 days."),
     ("Dormant", "Slipping away", ENGAGEMENT_HELP["Dormant"]),
     ("Inactive", "Inactive", ENGAGEMENT_HELP["Inactive"]),
-    ("Never Attended", "Never came", ENGAGEMENT_HELP["Never Attended"]),
 )
 CALLS_PER_PAGE = 20
 
@@ -501,9 +529,12 @@ def _queue_students(queue, today, goal="", locality=""):
         missing = dict(regulars_missing(today))
         students = list(base.filter(id__in=missing, rm_profile__outcome=""))
         return sorted(students, key=lambda student: -missing[student.id])
-    queryset = base.filter(needs_call_q(today) & engagement_q(queue, today))
-    order = ("-rm_profile__registration_date",) if queue == "Never Attended" else (F("last_visit").desc(nulls_last=True),)
-    return queryset.order_by(*order, "employee_first_name")
+    if queue == "once":
+        # Most recent enrollments first: the easiest to bring back.
+        return base.filter(needs_call_q(today) & no_return_q(today)).order_by("-rm_profile__registration_date", "employee_first_name")
+    # Students who only came to enroll are in their own queue.
+    queryset = base.filter(needs_call_q(today) & engagement_q(queue, today)).exclude(no_return_q(today))
+    return queryset.order_by(F("last_visit").desc(nulls_last=True), "employee_first_name")
 
 
 def _call_stats(today, user):
@@ -532,6 +563,7 @@ def _call_row(student, today):
         "student": student, "profile": profile, "initials": initials(student),
         "goal_key": GOAL_KEYS.get(profile.career_goal, "none"), "target": target_label(profile),
         "days_since": (today - last).days if last else None, "last_visit": last,
+        "only_enrolled": not last or last <= profile.registration_date, "enrolled_days": (today - profile.registration_date).days,
         "last_call": profile.followups.first(), "form": CallForm(prefix=f"s{student.id}"),
     }
 
@@ -542,9 +574,9 @@ def call_list(request):
     goal = request.GET.get("goal", "")
     locality = request.GET.get("locality", "")
     counts = {key: (len(_queue_students(key, today, goal, locality)) if key == "missing" else _queue_students(key, today, goal, locality).count()) for key, _, _ in QUEUES}
-    queue = request.GET.get("queue") or next((key for key, _, _ in QUEUES if counts[key]), "Dormant")
+    queue = request.GET.get("queue") or next((key for key, _, _ in QUEUES if counts[key]), "once")
     if queue not in counts:
-        queue = "Dormant"
+        queue = "once"
 
     if request.method == "POST":
         student = get_object_or_404(student_queryset(), id=request.POST.get("student_id"))
@@ -557,7 +589,7 @@ def call_list(request):
             messages.success(request, f"Call saved for {student.get_full_name()}.")
             return redirect(request.get_full_path())
         if is_htmx:
-            student.last_visit = rm_visits().filter(employee_id=student).order_by("-attendance_date").values_list("attendance_date", flat=True).first()
+            student = with_last_visit(student_queryset(), today).get(id=student.id)
             row = _call_row(student, today)
             row["form"] = form
             return render(request, "rm/partials/call_row.html", {"row": row, "queue": queue})

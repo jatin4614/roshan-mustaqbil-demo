@@ -19,7 +19,7 @@ from django.db.models import Max, ProtectedError, Q
 from django.utils import timezone
 
 from attendance.models import Attendance, AttendanceActivity, AttendanceLateComeEarlyOut
-from base.rm import CALL_BACK_AFTER_DAYS
+from base.rm import CALL_BACK_AFTER_DAYS, ENROLLMENT_VISIT
 from employee.models import Employee, StudentFollowUp, StudentProfile
 
 DEMO_DOMAINS = ("@rm.demo", "@roshanmustaqbil.demo")
@@ -163,13 +163,17 @@ def registration_date_for(rng, today):
 
 
 def engagement_for(rng, registered_days_ago):
+    """How a student's attendance went after the day they enrolled.
+
+    "once" students came only to enroll (students always enroll in person).
+    """
     if registered_days_ago < 30:
-        return pick(rng, (("active", 60), ("never", 40)))
+        return pick(rng, (("active", 70), ("once", 30)))
     if registered_days_ago < 60:
-        return pick(rng, (("active", 38), ("dormant", 45), ("never", 17)))
+        return pick(rng, (("active", 38), ("dormant", 45), ("once", 17)))
     if registered_days_ago <= 180:
-        return pick(rng, (("active", 20), ("dormant", 12), ("inactive", 55), ("never", 13)))
-    return pick(rng, (("active", 10), ("dormant", 7), ("inactive", 73), ("never", 10)))
+        return pick(rng, (("active", 20), ("dormant", 12), ("inactive", 55), ("once", 13)))
+    return pick(rng, (("active", 10), ("dormant", 7), ("inactive", 73), ("once", 10)))
 
 
 def prep_for(rng, registered_days_ago, age):
@@ -214,10 +218,12 @@ def visits_between(number, start, end, rate):
 
 
 def visit_plan(number, status, registered, today):
-    """Dates (and arrival times) this student visited, up to today."""
+    """Dates (and arrival times) this student visited, up to today. The first
+    is always the day they enrolled, in person."""
     rng = random.Random(f"plan-{number}")
-    if status == "never":
-        return []
+    enrolled = (registered, arrival_time(random.Random(f"enrolled-{number}")))
+    if status == "once":
+        return [enrolled]
     if status == "active":
         rate = pick(rng, ((0.8, 20), (0.35, 35), (0.12, 45)))
         start, end = max(registered, today - timedelta(days=150)), today
@@ -236,6 +242,7 @@ def visit_plan(number, status, registered, today):
     visits.setdefault(guarantee, arrival_time(random.Random(f"visit-{number}-{guarantee.isoformat()}")))
     if status != "active":
         visits = {day: at for day, at in visits.items() if day <= end}
+    visits[registered] = enrolled[1]
     return sorted(visits.items())
 
 
@@ -330,7 +337,7 @@ class Command(BaseCommand):
         Employee.objects.bulk_create(created, batch_size=200)
 
         students = {student.email: student for student in Employee.objects.filter(email__in=list(people))}
-        profiles, plans, status_totals = [], [], {"active": 0, "dormant": 0, "inactive": 0, "never": 0}
+        profiles, plans, status_totals = [], [], {"active": 0, "dormant": 0, "inactive": 0, "once": 0}
         for email, (number, rng, age, goal, qualification, tehsil, fields) in people.items():
             student = students[email]
             registered = registration_date_for(rng, today)
@@ -367,7 +374,8 @@ class Command(BaseCommand):
                     continue  # not arrived yet
                 attendance.append(Attendance(
                     employee_id=student, attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=arrived,
-                    attendance_worked_hour="00:00", minimum_hour="00:00", request_description="Roshan Mustaqbil visit",
+                    attendance_worked_hour="00:00", minimum_hour="00:00",
+                    request_description=ENROLLMENT_VISIT if day == registered else "Roshan Mustaqbil visit",
                 ))
             if calls and returned:
                 profile.last_followup_date = calls[-1][0]  # called, then came back

@@ -6,7 +6,7 @@
         <div>
             {% if student %}<a class="rm-back" href="{% url 'rm-student-profile' student.id %}">‹ {{ student.get_full_name }}</a>{% elif from_desk %}<a class="rm-back" href="{% url 'youth-daily-attendance' %}">‹ Mark attendance</a>{% else %}<a class="rm-back" href="{% url 'rm-students' %}">‹ All students</a>{% endif %}
             <h1 class="rm-head__title">{% if student %}Edit student details{% else %}Enroll a student{% endif %}</h1>
-            <p class="rm-head__sub">Fields marked <span class="rm-field__req">*</span> are required. Everything else can be filled in later.</p>
+            <p class="rm-head__sub">{% if not student %}Students enroll in person at the centre, so enrolling also marks them present. {% endif %}Fields marked <span class="rm-field__req">*</span> are required; everything else can be filled in later.</p>
         </div>
     </header>
 
@@ -59,7 +59,7 @@
 
         <div class="rm-form__actions">
             <a class="rm-btn rm-btn--secondary" href="{% if student %}{% url 'rm-student-profile' student.id %}{% elif from_desk %}{% url 'youth-daily-attendance' %}{% else %}{% url 'rm-students' %}{% endif %}">Cancel</a>
-            <button class="rm-btn rm-btn--primary" type="submit">{% if student %}Save changes{% elif from_desk %}Enroll and mark present{% else %}Enroll student{% endif %}</button>
+            <button class="rm-btn rm-btn--primary" type="submit">{% if student %}Save changes{% else %}Enroll and mark present{% endif %}</button>
         </div>
     </form>
 </div>

@@ -65,12 +65,12 @@
         <a class="rm-kpi" href="{% url 'rm-students' %}?registered=this_month&amp;sort=newest">
             <span class="rm-kpi__label">Enrolled this month, so far</span>
             <div class="rm-kpi__value">{{ kpis.enrolled_month }}</div>
-            <div class="rm-kpi__note"><b>{{ kpis.enrolled_month_came }}</b> have come in; {{ kpis.enrolled_last_month }} enrolled last month</div>
+            <div class="rm-kpi__note"><b>{{ kpis.enrolled_month_back }}</b> have come back since enrolling; {{ kpis.enrolled_last_month }} enrolled last month</div>
         </a>
         <a class="rm-kpi{% if kpis.due %} rm-kpi--alert{% endif %}" href="{% url 'rm-calls' %}">
             <span class="rm-kpi__label">Waiting for a call</span>
             <div class="rm-kpi__value">{{ kpis.due }}</div>
-            <div class="rm-kpi__note">Stopped coming and not called since; <b>{{ kpis.due_dormant }}</b> only just slipped away</div>
+            <div class="rm-kpi__note">Not called since they stopped coming; <b>{{ kpis.due_once }}</b> didn't come back after enrolling</div>
         </a>
     </section>
 
@@ -106,7 +106,7 @@
             <div class="rm-card__head">
                 <div>
                     <h2 class="rm-card__title">What happened to students who stopped coming</h2>
-                    <p class="rm-card__meta">{{ aftermath_total }} students: inactive, never came, or moved on. From follow-up calls; click a bar for the list.</p>
+                    <p class="rm-card__meta">{{ aftermath_total }} students who are inactive or have moved on, from follow-up calls. Click a bar for the list.</p>
                 </div>
             </div>
             {% include "rm/charts/bars.html" with rows=aftermath empty="No one has stopped coming." %}

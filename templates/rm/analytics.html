@@ -34,6 +34,11 @@
                 <div class="rm-kpi__note">{{ status.help }}</div>
             </a>
         {% endfor %}
+        <a class="rm-kpi" href="{% url 'rm-students' %}?returned=no{% if goal %}&amp;goal={{ goal|urlencode }}{% endif %}">
+            <span class="rm-kpi__label">{{ no_return_label }}</span>
+            <div class="rm-kpi__value">{{ no_return }}</div>
+            <div class="rm-kpi__note">{{ no_return_help }}</div>
+        </a>
     </section>
 
     <p class="rm-notice rm-notice--good" style="margin: 0">
@@ -44,8 +49,8 @@
         <section class="rm-card">
             <div class="rm-card__head">
                 <div>
-                    <h2 class="rm-card__title">New enrollments, and whether they came</h2>
-                    <p class="rm-card__meta">{% if conversion.recent %}Of the {{ conversion.recent }} enrolled 1 to 12 months ago, <b>{{ conversion.within_week }}</b> came within a week and <b>{{ conversion.never }}</b> ({{ conversion.never_share }}) never came.{% else %}Per month, last 12 months{% endif %}</p>
+                    <h2 class="rm-card__title">New enrollments, and whether they came back</h2>
+                    <p class="rm-card__meta">Students enroll in person, so every enrollment is a first visit. {% if conversion.recent %}Of the {{ conversion.recent }} who enrolled 1 to 12 months ago, <b>{{ conversion.within_week }}</b> came back within a week, and <b>{{ conversion.never_back }}</b> ({{ conversion.never_back_share }}) never came back after enrolling.{% endif %}</p>
                 </div>
             </div>
             {% include "rm/charts/stacked_columns.html" with chart=enrollments cls="rm-cols--labels rm-cols--dense" caption="New enrollments per month" %}
@@ -54,7 +59,7 @@
             <div class="rm-card__head">
                 <div>
                     <h2 class="rm-card__title">How long students kept coming before they stopped</h2>
-                    <p class="rm-card__meta">{% if kept_total %}{{ kept_total }} inactive students. <b>{{ kept_early }}</b> stopped within their first month, so the first weeks matter most.{% else %}No one has stopped coming yet.{% endif %}</p>
+                    <p class="rm-card__meta">{% if kept_total %}{{ kept_total }} inactive students, counted from the day they enrolled. <b>{{ kept_early }}</b> stopped within their first month, so the first weeks matter most.{% else %}No one has stopped coming yet.{% endif %}</p>
                 </div>
             </div>
             {% include "rm/charts/bars.html" with rows=kept empty="No one has stopped coming." %}

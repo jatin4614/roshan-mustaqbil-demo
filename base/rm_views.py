@@ -15,8 +15,8 @@ from django.utils import timezone
 from base import rm_charts as charts
 from base.rm import (
     ACTIVE_DAYS, AGE_BUCKETS, ALL_STATUSES, ENGAGEMENT_HELP, ENGAGEMENT_KEYS, ENGAGEMENT_LABELS,
-    ENGAGEMENT_STATUSES, GOAL_KEYS, GOAL_ORDER, MOVED_ON, NO_STATUS, NO_VALUE, NOT_RECORDED,
-    QUALIFICATIONS, first_visits, needs_call, rm_visits,
+    ENGAGEMENT_STATUSES, GOAL_KEYS, GOAL_ORDER, MOVED_ON, NO_RETURN_AFTER_DAYS, NO_RETURN_HELP, NO_RETURN_LABEL,
+    NO_STATUS, NO_VALUE, NOT_RECORDED, QUALIFICATIONS, needs_call, rm_visits, visit_summary,
 )
 from base.rm_access import rm_required
 from base.rm_common import (
@@ -89,12 +89,12 @@ def regulars_missing(today, rows_by_id=None):
 
 
 def aftermath_bars(rows):
-    """What happened to students who stopped coming (or never came)."""
+    """What happened to students who stopped coming (inactive or moved on)."""
     counts = Counter()
     for row in rows:
         if row["status"] == MOVED_ON:
             counts[row["outcome"]] += 1
-        elif row["status"] in {"Inactive", "Never Attended"}:
+        elif row["status"] == "Inactive":
             stale = row["last_followup_date"] and row["last_visit"] and row["last_followup_date"] < row["last_visit"]
             counts[NOT_CONTACTED if not row["current_status"] or stale else row["current_status"]] += 1
     total = sum(counts.values())
@@ -134,10 +134,12 @@ def rm_dashboard(request):
     month_start = today.replace(day=1)
     last_month_start = (month_start - timedelta(days=1)).replace(day=1)
     enrolled_month = [row for row in rows if row["registration_date"] and row["registration_date"] >= month_start]
+    no_return = [row for row in current if row["no_return"]]
     enrolled_last_month = sum(1 for row in rows if row["registration_date"] and last_month_start <= row["registration_date"] < month_start)
 
     due = [row for row in current if needs_call(row["status"], row["last_visit"], row, today)]
-    due_by_status = Counter(row["status"] for row in due)
+    # Each student sits in one queue: "didn't come back" takes precedence.
+    due_by_status = Counter("once" if row["no_return"] else row["status"] for row in due)
     missing = regulars_missing(today, rows_by_id)
     calls_week = StudentFollowUp.objects.filter(called_on__gte=today - timedelta(days=6)).count()
     moved = Counter(row["outcome"] for row in rows if row["status"] == MOVED_ON)
@@ -151,15 +153,15 @@ def rm_dashboard(request):
         "kpis": {
             "today": today_count, "typical": typical,
             "median_visits": charts.median(per_student.values()), "rare": rare, "active_visitors": len(per_student),
-            "enrolled_month": len(enrolled_month), "enrolled_month_came": sum(1 for row in enrolled_month if row["last_visit"]),
+            "enrolled_month": len(enrolled_month), "enrolled_month_back": sum(1 for row in enrolled_month if row["came_back"]),
             "enrolled_last_month": enrolled_last_month,
-            "due": len(due), "due_dormant": due_by_status["Dormant"],
+            "due": len(due), "due_once": due_by_status["once"], "no_return": len(no_return),
         },
         "queues": [
+            {"label": NO_RETURN_LABEL, "help": NO_RETURN_HELP, "count": due_by_status["once"], "url": reverse("rm-calls") + "?queue=once"},
             {"label": "Regulars who missed this week", "help": "Came 3+ times in the weeks before, not in the last 7 days", "count": len(missing), "url": reverse("rm-calls") + "?queue=missing"},
             {"label": "Slipping away", "help": ENGAGEMENT_HELP["Dormant"], "count": due_by_status["Dormant"], "url": reverse("rm-calls") + "?queue=Dormant"},
             {"label": "Inactive", "help": ENGAGEMENT_HELP["Inactive"], "count": due_by_status["Inactive"], "url": reverse("rm-calls") + "?queue=Inactive"},
-            {"label": "Never came", "help": ENGAGEMENT_HELP["Never Attended"], "count": due_by_status["Never Attended"], "url": reverse("rm-calls") + "?queue=Never+Attended"},
         ],
         "calls_week": calls_week,
         "checkins": checkin_rows(day_checkins(today, 6)),
@@ -191,8 +193,7 @@ def attendance_dashboard(request):
     visits = rm_visits().filter(attendance_date__range=(start, today))
     week = rm_visits().filter(attendance_date__range=(today - timedelta(days=6), today))
     week_students = set(week.values_list("employee_id", flat=True))
-    firsts = first_visits(week_students)
-    new_this_week = sum(1 for day in firsts.values() if day >= today - timedelta(days=6))
+    new_this_week = StudentProfile.objects.filter(registration_date__range=(today - timedelta(days=6), today)).count()
 
     weekday_totals, weekday_days = Counter(), Counter()
     for day in open_days:
@@ -319,11 +320,11 @@ def career_goals(request):
     return render(request, "rm/career_goals.html", context)
 
 
-KEPT_COMING = ("Came only once", "Less than a month", "1–3 months", "3–6 months", "6 months or more")
+KEPT_COMING = ("Only the day they enrolled", "Less than a month", "1–3 months", "3–6 months", "6 months or more")
 
 
 def _kept_coming(first, last):
-    if first == last:
+    if last <= first:
         return KEPT_COMING[0]
     days = (last - first).days
     return KEPT_COMING[1] if days < 30 else KEPT_COMING[2] if days < 91 else KEPT_COMING[3] if days < 182 else KEPT_COMING[4]
@@ -338,30 +339,36 @@ def analytics(request):
     goal_rows = [row for row in all_rows if row["goal"] == goal] if goal in GOAL_KEYS else all_rows
     rows = [row for row in goal_rows if row["status"] == "Active"] if scope == "active" else goal_rows
     total = len(rows)
-    firsts = first_visits()
+    summary = visit_summary()
 
-    # Enrollment each month, split by whether the student ever came.
+    # Enrollment each month, split by whether the student came back after
+    # the day they enrolled (enrolling is always in person).
     months, cursor = [], today.replace(day=1)
     for _ in range(12):
         months.append(cursor)
         cursor = (cursor - timedelta(days=1)).replace(day=1)
     months.reverse()
-    came, not_yet = Counter(), Counter()
+    came_back, not_back = Counter(), Counter()
     for row in goal_rows:
         registered = row["registration_date"]
         if registered and registered >= months[0]:
-            (came if row["id"] in firsts else not_yet)[(registered.year, registered.month)] += 1
+            (came_back if row["came_back"] else not_back)[(registered.year, registered.month)] += 1
     enrollment_points = [
         {"label": month.strftime("%b") if month.month != 1 else month.strftime("%b %y"), "tip": month.strftime("%B %Y"),
-         "parts": {"came": came[(month.year, month.month)], "not_yet": not_yet[(month.year, month.month)]}}
+         "parts": {"back": came_back[(month.year, month.month)], "not_back": not_back[(month.year, month.month)]}}
         for month in months
     ]
-    recent = [row for row in goal_rows if row["registration_date"] and months[0] <= row["registration_date"] <= today - timedelta(days=30)]
-    within_week = sum(1 for row in recent if row["id"] in firsts and (firsts[row["id"]] - row["registration_date"]).days <= 7)
-    never = sum(1 for row in recent if row["id"] not in firsts)
 
-    stopped = [row for row in goal_rows if row["status"] == "Inactive" and row["id"] in firsts and row["last_visit"]]
-    kept = Counter(_kept_coming(firsts[row["id"]], row["last_visit"]) for row in stopped)
+    def returned_within(row, days):
+        """A visit after the enrollment day, within ``days`` of it."""
+        return any(0 < (day - row["registration_date"]).days <= days for day in summary.get(row["id"], ()))
+
+    recent = [row for row in goal_rows if row["registration_date"] and months[0] <= row["registration_date"] <= today - timedelta(days=30)]
+    within_week = sum(1 for row in recent if returned_within(row, NO_RETURN_AFTER_DAYS))
+    never_back = sum(1 for row in recent if not row["came_back"])
+
+    stopped = [row for row in goal_rows if row["status"] == "Inactive" and row["registration_date"]]
+    kept = Counter(_kept_coming(row["registration_date"], row["last_visit"]) for row in stopped)
     early = kept[KEPT_COMING[0]] + kept[KEPT_COMING[1]]
 
     age_labels = [label for _, label in AGE_BUCKETS]
@@ -372,7 +379,7 @@ def analytics(request):
         for label in age_labels if ages.get(label, 0) or label not in {"Below 15", "Above 30"}
     ]
     requirement_counts = Counter(item for row in rows for item in (row["requirements"] or []))
-    lapsed_rows = [row for row in goal_rows if row["status"] in {"Inactive", "Never Attended"}]
+    lapsed_rows = [row for row in goal_rows if row["status"] == "Inactive"]
     lapsed_needs = Counter(item for row in lapsed_rows for item in (row["requirements"] or []))
     needs = charts.bars(requirement_counts, total=total, url=lambda item: students_url(requirement=item, engagement=status_filter, goal=goal))
     for bar in needs:
@@ -393,8 +400,9 @@ def analytics(request):
         "scopes": [("active", "Active students"), ("all", "Everyone enrolled")],
         "engagement": _engagement_block(goal_rows),
         "enrolled_total": len(goal_rows),
-        "enrollments": charts.stacked_columns(enrollment_points, [("came", "active", "Came at least once"), ("not_yet", "never", "Haven't come yet")], unit="enrollment"),
-        "conversion": {"recent": len(recent), "within_week": charts.share_label(within_week, len(recent)), "never": never, "never_share": charts.share_label(never, len(recent))},
+        "enrollments": charts.stacked_columns(enrollment_points, [("back", "active", "Came back after enrolling"), ("not_back", "dormant", "Only came to enroll")], unit="enrollment"),
+        "conversion": {"recent": len(recent), "within_week": charts.share_label(within_week, len(recent)), "never_back": never_back, "never_back_share": charts.share_label(never_back, len(recent))},
+        "no_return": sum(1 for row in goal_rows if row["no_return"]), "no_return_label": NO_RETURN_LABEL, "no_return_help": NO_RETURN_HELP,
         "kept": charts.bars(kept, total=len(stopped), order=KEPT_COMING, keys={label: f"age-{index + 1}" for index, label in enumerate(KEPT_COMING)}),
         "kept_total": len(stopped), "kept_early": charts.share_label(early, len(stopped)),
         "ages": charts.columns(age_points, unit="student"),

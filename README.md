@@ -6,6 +6,9 @@ Roshan Mustaqbil is a small administration system for a youth centre in
 Kupwara. Centre staff use it to mark daily attendance, enroll students, call
 students who have stopped coming, and understand who uses the centre and why.
 
+Students enroll in person at the centre (there is no online sign-up), so the
+day a student enrolls is recorded as their first visit.
+
 ## What it does
 
 - **Mark attendance**: search by registration number, phone or name. Enter
@@ -16,9 +19,9 @@ students who have stopped coming, and understand who uses the centre and why.
 - **Dashboard**: how many current students came in the last 30 days, the trend
   over six months, today so far against a typical day, who is waiting for a
   call, and what happened to students who stopped coming.
-- **Follow-up calls**: a prioritised call list (regulars who missed this week,
-  slipping away, inactive, never came) with tap-to-call numbers and "Save &
-  next". Every call is kept in a history; students who couldn't be reached
+- **Follow-up calls**: a prioritised call list (didn't come back after
+  enrolling, regulars who missed this week, slipping away, inactive) with
+  tap-to-call numbers and "Save & next". Every call is kept in a history; students who couldn't be reached
   come back to the list after a week. Students who were selected, joined a
   course, moved away or lost interest "move on" instead of counting as
   inactive for ever.
@@ -28,15 +31,16 @@ students who have stopped coming, and understand who uses the centre and why.
   calendar and the call history.
 - **Enrollment**: a sectioned form with duplicate warnings, 10-digit phone
   checks, date of birth or approximate age, area, target exam, preparation
-  stage and exam year. Enrolling from the attendance desk marks the student
-  present too. Students never get a login.
+  stage and exam year. Enrolling marks the student present on the enrollment
+  date. Students never get a login.
 - **Attendance dashboard, career goals and analytics**: busiest days and
   hours, how often each goal group comes, Defence entry schemes and other
-  exams, preparation stages, exams coming up, enrollments and whether they
-  came, how long students keep coming before they stop, age, gender, area,
-  needs (compared with students who stopped) and expectations.
+  exams, preparation stages, exams coming up, enrollments and whether
+  students came back, how long they keep coming before they stop, age,
+  gender, area, needs (compared with students who stopped) and expectations.
 - **Import**: bring existing registers and past attendance in from a CSV
-  file, with a row-by-row check before anything is saved.
+  file, with a row-by-row check before anything is saved. Each imported
+  student is recorded as present on their enrollment date.
 - **Staff accounts and roles**: front desk, coordinator and manager.
   Managers add staff and reset passwords; new staff choose their own password
   when they first sign in.
@@ -77,10 +81,24 @@ examples match. Run it again later to add the day's check-ins so far; it never
 rewrites records staff have changed. `--reset` replaces the demo data;
 `--remove` deletes it before real students are entered.
 
-## Render deployment
+## Putting the demo online
 
-`render.yaml` defines a Render web service and PostgreSQL database; see
-`RENDER_DEPLOYMENT.md`.
+`docs/DEPLOYMENT_OPTIONS.md` compares the ways to share the demo: VS Code port
+forwarding from this PC (quickest), tunnels, Codespaces, Render, Railway,
+Azure and Fly.io. `render.yaml` defines a Render web service and PostgreSQL
+database; see `RENDER_DEPLOYMENT.md`.
+
+## Checking the data
+
+```bash
+.venv\Scripts\python manage.py review_rm
+```
+
+checks the rules the screens depend on: every student has exactly one
+enrollment visit on their enrollment date, "didn't come back after enrolling"
+gives the same students everywhere, no student is in two call queues, phone
+numbers are valid, and removed wording hasn't returned. It exits with an
+error if a check fails.
 
 ## Technology
 

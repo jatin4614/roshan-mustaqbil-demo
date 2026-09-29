@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from base.rm import (
     AGE_BUCKETS, ENGAGEMENT_KEYS, ENGAGEMENT_LABELS, GOAL_KEYS, NO_VALUE, NOT_RECORDED,
-    OPEN_DAY_MIN_VISITS, engagement_status, initials, rm_visits, student_queryset,
+    OPEN_DAY_MIN_VISITS, engagement_status, initials, is_no_return, rm_visits, student_queryset,
     target_label, with_last_visit,
 )
 from employee.models import Employee, StudentProfile
@@ -54,12 +54,14 @@ def student_values(today, queryset=None):
     queryset = queryset if queryset is not None else student_queryset()
     rows = list(with_last_visit(queryset, today).values(
         "id", "employee_first_name", "employee_last_name", "badge_id", "phone", "gender", "dob", "qualification",
-        "last_visit", *(f"rm_profile__{field}" for field in PROFILE_FIELDS),
+        "last_visit", "visits", *(f"rm_profile__{field}" for field in PROFILE_FIELDS),
     ))
     for row in rows:
         for field in PROFILE_FIELDS:
             row[field] = row.pop(f"rm_profile__{field}")
-        row["status"] = engagement_status(row["last_visit"], today, row["outcome"])
+        row["status"] = engagement_status(row["last_visit"], today, row["outcome"], row["registration_date"])
+        row["no_return"] = is_no_return(row["last_visit"], row["registration_date"], row["status"], today)
+        row["came_back"] = bool(row["last_visit"] and row["registration_date"] and row["last_visit"] > row["registration_date"])
         row["name"] = f"{row['employee_first_name']} {row['employee_last_name'] or ''}".strip()
         row["goal"] = row["career_goal"] or NOT_RECORDED
     return rows

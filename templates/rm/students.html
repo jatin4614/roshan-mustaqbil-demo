@@ -5,7 +5,7 @@
     <header class="rm-head">
         <div>
             <h1 class="rm-head__title">{% if inactive_only %}Inactive students{% else %}Students{% endif %}</h1>
-            <p class="rm-head__sub">{% if inactive_only %}No visit for 60 days or more, or never came. Use the <a class="rm-card__link" href="{% url 'rm-calls' %}">call list</a> to follow up.{% else %}Everyone enrolled at the centre, with how recently they came.{% endif %}</p>
+            <p class="rm-head__sub">{% if inactive_only %}No visit for 60 days or more. Use the <a class="rm-card__link" href="{% url 'rm-calls' %}">call list</a> to follow up.{% else %}Everyone who has enrolled at the centre, with how recently they came.{% endif %}</p>
         </div>
         <div class="rm-head__actions">
             <a class="rm-btn rm-btn--secondary" href="{{ export_url }}">
@@ -47,6 +47,13 @@
                 <button type="submit" class="rm-btn rm-btn--primary">Search</button>
             </div>
             <div class="rm-more" id="more-filters"{% if not more_open %} hidden{% endif %}>
+                <div class="rm-field">
+                    <label for="f-returned">Came back after enrolling</label>
+                    <select id="f-returned" name="returned" data-autosubmit>
+                        <option value="">Anyone</option>
+                        <option value="no"{% if filters.returned == "no" %} selected{% endif %}>{{ no_return_label }}</option>
+                    </select>
+                </div>
                 <div class="rm-field">
                     <label for="f-target">Exam</label>
                     <select id="f-target" name="target" data-autosubmit>
@@ -191,9 +198,8 @@
                             </td>
                             <td><span class="rm-pill k-{{ row.status_key }}">{{ row.status_label }}</span></td>
                             <td>
-                                {% if row.last_visit %}
-                                    <span title="{{ row.last_visit|date:'l, j F Y' }}">{% if row.days_since_visit == 0 %}Today{% elif row.days_since_visit == 1 %}Yesterday{% elif row.days_since_visit < 60 %}{{ row.days_since_visit }} days ago{% else %}{{ row.last_visit|date:"j M Y" }}{% endif %}</span>
-                                {% else %}<span class="rm-muted">Never</span>{% endif %}
+                                <span title="{{ row.last_visit|date:'l, j F Y' }}">{% if row.days_since_visit == 0 %}Today{% elif row.days_since_visit == 1 %}Yesterday{% elif row.days_since_visit < 60 %}{{ row.days_since_visit }} days ago{% else %}{{ row.last_visit|date:"j M Y" }}{% endif %}</span>
+                                {% if row.no_return %}<span class="rm-person__sub">Only came to enroll</span>{% endif %}
                             </td>
                             <td class="rm-hide-sm">{{ row.doing_now|default:"—" }}</td>
                             <td class="rm-chev" aria-hidden="true">›</td>

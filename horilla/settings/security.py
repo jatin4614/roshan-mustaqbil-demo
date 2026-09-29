@@ -83,6 +83,9 @@ def apply_secure_defaults(env, debug: bool) -> dict:
         "SECURE_SSL_REDIRECT": env.bool("SECURE_SSL_REDIRECT", default=False),
     }
     if settings["SECURE_SSL_REDIRECT"]:
+        # Hosting platforms probe these over plain HTTP from inside their
+        # network and treat a redirect as a failed check.
+        settings["SECURE_REDIRECT_EXEMPT"] = [r"^health/$", r"^ready/$"]
         settings["SECURE_HSTS_SECONDS"] = env.int(
             "SECURE_HSTS_SECONDS", default=31536000
         )

@@ -35,7 +35,7 @@
     --rm-active: #0e8a6f;
     --rm-dormant: #e39b2d;
     --rm-inactive: #6e7f96;
-    --rm-never: #b9c2cc;
+    --rm-muted-fill: #b9c2cc;
     --rm-moved: #8a7560;
 
     /* what happened to students who stopped coming */
@@ -90,7 +90,7 @@ body.dark {
     --rm-active: #23a386;
     --rm-dormant: #e8a640;
     --rm-inactive: #8a9bb2;
-    --rm-never: #4f5b69;
+    --rm-muted-fill: #4f5b69;
     --rm-moved: #b59c80;
     --rm-call: #f0953a;
     --rm-good: #4fb265;
@@ -256,7 +256,7 @@ a.rm-kpi:hover { background: var(--rm-sunken); }
 }
 .rm-kpi--alert .rm-kpi__value { color: var(--rm-danger); }
 
-/* ── Centre pulse: every registered student is a square ───────────────── */
+/* ── Centre pulse ───────────────────────────────────────────────────────── */
 
 .rm-pulse {
     display: grid;
@@ -288,30 +288,25 @@ a.rm-kpi:hover { background: var(--rm-sunken); }
 
 .rm-swatch { width: 12px; height: 12px; border-radius: 3px; background: var(--rm-other); flex: none; display: inline-block; }
 
-.rm-waffle {
     display: grid;
     grid-template-columns: repeat(auto-fill, 11px);
     gap: 3px;
     align-content: start;
 }
-.rm-waffle i { width: 11px; height: 11px; border-radius: 2px; background: var(--rm-never); cursor: pointer; }
-.rm-waffle i:hover { outline: 2px solid var(--rm-ink); outline-offset: 1px; }
-.rm-waffle--static i { cursor: default; }
-.rm-waffle__note { margin: 12px 0 0; font-size: 12.5px; color: var(--rm-muted); }
 
 /* ── Colour keys (shared by swatches, bars, dots, cells) ─────────────── */
 
 .k-active { --k: var(--rm-active); } .k-dormant { --k: var(--rm-dormant); }
-.k-inactive { --k: var(--rm-inactive); } .k-never { --k: var(--rm-never); } .k-moved { --k: var(--rm-moved); }
+.k-inactive { --k: var(--rm-inactive); } .k-moved { --k: var(--rm-moved); }
 .k-call { --k: var(--rm-call); } .k-good { --k: var(--rm-good); } .k-neutral { --k: var(--rm-neutral); } .k-lost { --k: var(--rm-lost); }
 .k-defence { --k: var(--rm-defence); } .k-upsc { --k: var(--rm-upsc); }
 .k-neet-ug { --k: var(--rm-neet-ug); } .k-neet-pg { --k: var(--rm-neet-pg); }
-.k-other, .k-none { --k: var(--rm-other); } .k-muted { --k: var(--rm-never); }
+.k-other, .k-none { --k: var(--rm-other); } .k-muted { --k: var(--rm-muted-fill); }
 .k-female { --k: var(--rm-female); } .k-male { --k: var(--rm-male); }
 .k-age-0 { --k: var(--rm-age-0); } .k-age-1 { --k: var(--rm-age-1); } .k-age-2 { --k: var(--rm-age-2); }
 .k-age-3 { --k: var(--rm-age-3); } .k-age-4 { --k: var(--rm-age-4); } .k-age-5 { --k: var(--rm-age-5); }
 .k-age-6 { --k: var(--rm-age-6); }
-.rm-swatch[class*="k-"], .rm-waffle i[class*="k-"], .rm-dot[class*="k-"] { background: var(--k); }
+.rm-swatch[class*="k-"], .rm-dot[class*="k-"] { background: var(--k); }
 
 .rm-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; background: var(--rm-other); }
 
@@ -643,8 +638,6 @@ select.rm-control, .rm-form select {
     .rm-stack__row { grid-template-columns: minmax(0, 1fr) auto; }
     .rm-stack__row .rm-split { grid-column: 1 / -1; grid-row: 2; }
     .rm-hide-sm { display: none; }
-    .rm-waffle { grid-template-columns: repeat(auto-fill, 7px); gap: 2px; }
-    .rm-waffle i { width: 7px; height: 7px; border-radius: 1px; }
     .rm-control--xl { font-size: 17px; min-height: 52px; }
     body:has(.rm-page) #breadcrumbs-container { display: none; }
 }
@@ -682,7 +675,7 @@ a.rm-col:hover .rm-col__bar { background: var(--rm-teal-strong); }
 
 .rm-split--labelled { height: 22px; }
 .rm-split--labelled > span { display: grid; place-items: center; font-size: 11.5px; font-weight: 600; color: #fff; overflow: hidden; white-space: nowrap; }
-.rm-split--labelled > span.k-never, .rm-split--labelled > span.k-dormant, .rm-split--labelled > span.k-age-0,
+.rm-split--labelled > span.k-dormant, .rm-split--labelled > span.k-age-0,
 .rm-split--labelled > span.k-age-1, .rm-split--labelled > span.k-age-6, .rm-split--labelled > span.k-muted { color: #14233a; }
 body.dark .rm-split--labelled > span { color: #0c1a1a; }
 

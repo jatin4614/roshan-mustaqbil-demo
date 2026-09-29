@@ -5,28 +5,37 @@ from collections import Counter
 from datetime import date, timedelta
 
 from django.db import IntegrityError, transaction
-from django.db.models import F, Max, Min, OuterRef, Q, Subquery
+from django.db.models import Count, F, IntegerField, Max, Min, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from attendance.models import Attendance
 
+# Students enroll in person at the centre, so the day they enroll is their
+# first visit: every enrolled student has come at least once.
+#
 # "Active" means a visit within the last 30 calendar days, today included.
 ACTIVE_DAYS = 30
 DORMANT_DAYS = 60
-ENGAGEMENT_STATUSES = ("Active", "Dormant", "Inactive", "Never Attended")
+ENGAGEMENT_STATUSES = ("Active", "Dormant", "Inactive")
 MOVED_ON = "Moved On"
 ALL_STATUSES = ENGAGEMENT_STATUSES + (MOVED_ON,)
-LAPSED = ("Dormant", "Inactive", "Never Attended")
-ENGAGEMENT_KEYS = {"Active": "active", "Dormant": "dormant", "Inactive": "inactive", "Never Attended": "never", MOVED_ON: "moved"}
+LAPSED = ("Dormant", "Inactive")
+ENGAGEMENT_KEYS = {"Active": "active", "Dormant": "dormant", "Inactive": "inactive", MOVED_ON: "moved"}
 # Words staff use; the stored values stay as they are.
-ENGAGEMENT_LABELS = {"Active": "Active", "Dormant": "Slipping away", "Inactive": "Inactive", "Never Attended": "Never came", MOVED_ON: "Moved on"}
+ENGAGEMENT_LABELS = {"Active": "Active", "Dormant": "Slipping away", "Inactive": "Inactive", MOVED_ON: "Moved on"}
 ENGAGEMENT_HELP = {
     "Active": f"Came in the last {ACTIVE_DAYS} days",
     "Dormant": f"Last came {ACTIVE_DAYS}–{DORMANT_DAYS - 1} days ago",
     "Inactive": f"Hasn't come for {DORMANT_DAYS} days or more",
-    "Never Attended": "Enrolled but never checked in",
     MOVED_ON: "Selected, joined a course, moved away or closed",
 }
+# Students who came only on the day they enrolled. After a week's grace
+# they are the easiest to lose, and the most worth a call.
+NO_RETURN_AFTER_DAYS = 7
+NO_RETURN_LABEL = "Didn't come back after enrolling"
+NO_RETURN_HELP = f"Enrolled at least {NO_RETURN_AFTER_DAYS} days ago and hasn't been back since"
+ENROLLMENT_VISIT = "Enrolled at the centre"
 AGE_BUCKETS = ((15, "Below 15"), (18, "15–17"), (22, "18–21"), (26, "22–25"), (31, "26–30"), (999, "Above 30"))
 # Career goals keep one colour everywhere in the app; the key maps to CSS.
 GOAL_ORDER = ("Defence", "UPSC / Civil Services", "NEET UG", "NEET PG", "Other")
@@ -112,13 +121,24 @@ def rm_visits():
 
 
 def with_last_visit(queryset, today=None):
-    """Annotate each student with the date of their most recent visit."""
+    """Annotate each student with their latest visit and number of visits.
+
+    The enrollment day counts as a visit even if no attendance record
+    exists for it (older data), so ``last_visit`` is never empty.
+    """
     today = today or timezone.localdate()
     latest = (
         Attendance.objects.filter(employee_id=OuterRef("pk"), attendance_date__lte=today)
         .order_by("-attendance_date").values("attendance_date")[:1]
     )
-    return queryset.annotate(last_visit=Subquery(latest))
+    visits = (
+        Attendance.objects.filter(employee_id=OuterRef("pk"), attendance_date__lte=today)
+        .order_by().values("employee_id").annotate(total=Count("id")).values("total")
+    )
+    return queryset.annotate(
+        last_visit=Coalesce(Subquery(latest), F("rm_profile__registration_date")),
+        visits=Coalesce(Subquery(visits, output_field=IntegerField()), 0),
+    )
 
 
 def engagement_q(status, today=None):
@@ -130,17 +150,34 @@ def engagement_q(status, today=None):
     return {
         "Active": current & Q(last_visit__gte=active_from),
         "Dormant": current & Q(last_visit__gte=dormant_from, last_visit__lt=active_from),
-        "Inactive": current & Q(last_visit__lt=dormant_from),
-        "Never Attended": current & Q(last_visit__isnull=True),
+        "Inactive": current & (Q(last_visit__lt=dormant_from) | Q(last_visit__isnull=True)),
         MOVED_ON: ~Q(rm_profile__outcome=""),
     }[status]
 
 
-def engagement_status(last_visit, today=None, outcome=""):
+def no_return_q(today=None):
+    """No visit since the day they enrolled, at least a week ago (rows need
+    ``last_visit`` from with_last_visit)."""
+    today = today or timezone.localdate()
+    return Q(
+        rm_profile__outcome="", rm_profile__registration_date__lte=today - timedelta(days=NO_RETURN_AFTER_DAYS),
+        last_visit__lte=F("rm_profile__registration_date"),
+    )
+
+
+def is_no_return(last_visit, registered, status, today=None):
+    today = today or date.today()
+    if status == MOVED_ON or not registered or registered > today - timedelta(days=NO_RETURN_AFTER_DAYS):
+        return False
+    return not last_visit or last_visit <= registered
+
+
+def engagement_status(last_visit, today=None, outcome="", registered=None):
     if outcome:
         return MOVED_ON
+    last_visit = last_visit or registered  # enrolling is a visit
     if not last_visit:
-        return "Never Attended"
+        return "Inactive"
     elapsed = ((today or date.today()) - last_visit).days
     if elapsed < ACTIVE_DAYS:
         return "Active"
@@ -152,7 +189,7 @@ def engagement_status(last_visit, today=None, outcome=""):
 def needs_call_q(today=None):
     """Lapsed students who are due a follow-up call (rows need last_visit)."""
     today = today or timezone.localdate()
-    lapsed = engagement_q("Dormant", today) | engagement_q("Inactive", today) | engagement_q("Never Attended", today)
+    lapsed = engagement_q("Dormant", today) | engagement_q("Inactive", today) | no_return_q(today)
     stale = Q(rm_profile__last_followup_date__isnull=True) | Q(rm_profile__last_followup_date__lt=F("last_visit"))
     retry = Q(rm_profile__current_status__in=RETRY_RESULTS, rm_profile__last_followup_date__lte=today - timedelta(days=RETRY_AFTER_DAYS))
     due = Q(rm_profile__next_call_date__lte=today) | (Q(rm_profile__next_call_date__isnull=True) & (stale | retry))
@@ -162,11 +199,12 @@ def needs_call_q(today=None):
 def needs_call(status, last_visit, profile, today=None):
     """Python twin of needs_call_q for rows already in memory.
 
-    ``profile`` is a mapping with last_followup_date, next_call_date and
-    current_status.
+    ``profile`` is a mapping with last_followup_date, next_call_date,
+    current_status and registration_date.
     """
     today = today or date.today()
-    if status not in LAPSED:
+    no_return = is_no_return(last_visit, profile.get("registration_date"), status, today)
+    if status not in LAPSED and not no_return:
         return False
     next_call = profile.get("next_call_date")
     if next_call:
@@ -233,6 +271,7 @@ def engagement_for_students(students=None, today=None):
 
 def engagement_row(student, last_visit, today=None):
     today = today or date.today()
+    last_visit = last_visit or student.rm_profile.registration_date
     status = engagement_status(last_visit, today, student.rm_profile.outcome)
     return {
         "student": student,
@@ -253,7 +292,7 @@ def first_visits(ids=None):
 
 # ── Attendance ───────────────────────────────────────────────────────────
 
-def mark_student_present(student, day=None, actor=None):
+def mark_student_present(student, day=None, actor=None, note="Roshan Mustaqbil visit"):
     """Record one RM visit per student per day.
 
     ``day`` defaults to today (with the current time). A back-dated visit
@@ -269,7 +308,7 @@ def mark_student_present(student, day=None, actor=None):
         "attendance_clock_in": arrived,
         "attendance_worked_hour": "00:00",
         "minimum_hour": "00:00",
-        "request_description": "Roshan Mustaqbil visit",
+        "request_description": note,
     }
     try:
         with transaction.atomic():
@@ -289,6 +328,22 @@ def mark_student_present(student, day=None, actor=None):
             profile.next_call_date = profile.outcome_date = None
             profile.save(update_fields=["current_status", "inactivity_reason", "outcome", "next_call_date", "outcome_date"])
     return record, created
+
+
+def record_enrollment_visit(student, day, actor=None):
+    """Students enroll in person, so enrolling marks them present that day."""
+    return mark_student_present(student, day=day, actor=actor, note=ENROLLMENT_VISIT)
+
+
+def visit_summary(ids=None):
+    """Per student: their visit dates, oldest first."""
+    queryset = rm_visits()
+    if ids is not None:
+        queryset = queryset.filter(employee_id__in=ids)
+    days = {}
+    for student, day in queryset.order_by("employee_id", "attendance_date").values_list("employee_id", "attendance_date"):
+        days.setdefault(student, []).append(day)
+    return days
 
 
 # ── Follow-up calls ──────────────────────────────────────────────────────

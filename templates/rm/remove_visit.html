@@ -6,7 +6,7 @@
         <div>
             <a class="rm-back" href="{{ back }}">‹ Back</a>
             <h1 class="rm-head__title">Remove this visit?</h1>
-            <p class="rm-head__sub">Use this when a student was marked present by mistake. It can't be undone, but you can mark them again.</p>
+            <p class="rm-head__sub">{% if record.request_description == "Enrolled at the centre" %}This is the day {{ record.employee_id.employee_first_name }} enrolled. Remove it only if the enrollment date was wrong: correct the date on their details instead.{% else %}Use this when a student was marked present by mistake. It can't be undone, but you can mark them again.{% endif %}</p>
         </div>
     </header>
     <section class="rm-card">

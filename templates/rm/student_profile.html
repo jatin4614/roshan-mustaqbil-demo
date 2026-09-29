@@ -44,11 +44,17 @@
         </div>
     {% endif %}
 
+    {% if no_return and not moved_on %}
+        <div class="rm-notice">
+            <span><b>{{ no_return_label }}.</b> {{ student.employee_first_name }} enrolled on {{ profile.registration_date|date:"j M Y" }} and hasn't been back since. A call now is the best chance of bringing them back.</span>
+        </div>
+    {% endif %}
+
     <section class="rm-kpis" style="--rm-kpi-count: 4" aria-label="Visits">
         <div class="rm-kpi">
             <span class="rm-kpi__label">Last visit</span>
-            <div class="rm-kpi__value">{% if engagement.last_visit %}{% if engagement.days_since_visit == 0 %}Today{% elif engagement.days_since_visit == 1 %}Yesterday{% else %}{{ engagement.days_since_visit }}<span style="font-size: 16px; font-weight: 500"> days ago</span>{% endif %}{% else %}Never{% endif %}</div>
-            <div class="rm-kpi__note">{% if engagement.last_visit %}{{ engagement.last_visit|date:"l, j F Y" }}{% else %}No check-in recorded{% endif %}</div>
+            <div class="rm-kpi__value">{% if engagement.days_since_visit == 0 %}Today{% elif engagement.days_since_visit == 1 %}Yesterday{% else %}{{ engagement.days_since_visit }}<span style="font-size: 16px; font-weight: 500"> days ago</span>{% endif %}</div>
+            <div class="rm-kpi__note">{{ engagement.last_visit|date:"l, j F Y" }}</div>
         </div>
         <div class="rm-kpi">
             <span class="rm-kpi__label">Visits this month</span>
@@ -63,7 +69,7 @@
         <div class="rm-kpi">
             <span class="rm-kpi__label">All visits</span>
             <div class="rm-kpi__value">{{ total_visits }}</div>
-            <div class="rm-kpi__note">Since enrolling</div>
+            <div class="rm-kpi__note">Including the day they enrolled</div>
         </div>
     </section>
 
@@ -117,11 +123,11 @@
             <ul class="rm-list">
                 {% for visit in visits %}
                     <li class="rm-list__item">
-                        <span>{{ visit.attendance_date|date:"D, j M Y" }}<span class="rm-person__sub">{% if visit.attendance_clock_in %}{{ visit.attendance_clock_in|time:"g:i A" }}{% else %}From a register{% endif %}{% if visit.created_by %}, marked by {{ visit.created_by.get_username }}{% endif %}</span></span>
+                        <span>{{ visit.attendance_date|date:"D, j M Y" }}<span class="rm-person__sub">{% if visit.request_description == enrollment_visit %}Enrolled{% if visit.attendance_clock_in %} at {{ visit.attendance_clock_in|time:"g:i A" }}{% endif %}{% elif visit.attendance_clock_in %}{{ visit.attendance_clock_in|time:"g:i A" }}{% else %}From a register{% endif %}{% if visit.created_by %}, marked by {{ visit.created_by.get_username }}{% endif %}</span></span>
                         {% if can_follow_up or visit.attendance_date == engagement.last_visit and present_today %}<a class="rm-card__link" href="{% url 'rm-remove-visit' visit.id %}" style="font-weight: 500">Remove</a>{% endif %}
                     </li>
                 {% empty %}
-                    <li class="rm-empty"><b>No visits yet.</b>They'll appear here once {{ student.employee_first_name }} checks in.</li>
+                    <li class="rm-empty"><b>No visits recorded.</b>{{ student.employee_first_name }} enrolled on {{ profile.registration_date|date:"j M Y" }}.</li>
                 {% endfor %}
             </ul>
         </section>

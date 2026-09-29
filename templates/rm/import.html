@@ -84,7 +84,7 @@
             <section class="rm-card">
                 <div class="rm-card__head"><h2 class="rm-card__title">Columns</h2></div>
                 {% if kind == "students" %}
-                    <p class="rm-card__meta" style="margin-top: 0">Only <span class="rm-code">full_name</span> and <span class="rm-code">phone</span> are required. Dates can be 2024-05-31 or 31-05-2024.</p>
+                    <p class="rm-card__meta" style="margin-top: 0"><span class="rm-code">full_name</span>, <span class="rm-code">phone</span> and <span class="rm-code">enrollment_date</span> are required. Students enroll in person, so each one is recorded as present on their enrollment date. Dates can be 2024-05-31 or 31-05-2024.</p>
                     <p style="line-height: 2">{% for column in student_columns %}<span class="rm-code">{{ column }}</span> {% endfor %}</p>
                     <p class="rm-card__meta">Career goal: {{ goals|join:", " }}. Anything else is kept as "Other" with your wording.</p>
                     <p class="rm-card__meta">Area: {{ areas|join:", " }}.</p>

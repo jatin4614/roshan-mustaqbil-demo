@@ -13,9 +13,9 @@ from django.utils import timezone
 from attendance.models import Attendance
 from base import rm_charts
 from base.rm import (
-    ROLE_GROUPS, engagement_q, engagement_status, mark_student_present, needs_call, needs_call_q,
-    normalize_phone, normalize_qualification, record_followup, role_of, student_queryset, valid_mobile,
-    with_last_visit,
+    ENROLLMENT_VISIT, ROLE_GROUPS, engagement_q, engagement_status, is_no_return, mark_student_present, needs_call,
+    needs_call_q, no_return_q, normalize_phone, normalize_qualification, record_followup, role_of, student_queryset,
+    valid_mobile, with_last_visit,
 )
 from base.rm_common import PAGE_SIZE
 from base.rm_students import StudentRegistrationForm
@@ -24,6 +24,7 @@ from horilla.testkit.factories import make_company, make_employee, make_user
 from horilla_auth.models import HorillaUser
 
 cleanup = importlib.import_module("employee.migrations.0010_rm_data_cleanup")
+enrollment_visits = importlib.import_module("employee.migrations.0011_rm_enrollment_visits")
 
 
 class HelperTests(SimpleTestCase):
@@ -62,9 +63,23 @@ class HelperTests(SimpleTestCase):
         self.assertEqual(normalize_qualification("M.A. Urdu"), "Postgraduate")
         self.assertEqual(cleanup.locality_from("Tangdar, near bridge"), "Karnah")
 
+    def test_didnt_come_back_after_enrolling(self):
+        today = timezone.localdate()
+        enrolled = today - timedelta(days=10)
+        self.assertTrue(is_no_return(enrolled, enrolled, "Active", today))
+        self.assertFalse(is_no_return(today - timedelta(days=2), enrolled, "Active", today))  # came back
+        self.assertFalse(is_no_return(today - timedelta(days=3), today - timedelta(days=3), "Active", today))  # too soon to tell
+        self.assertFalse(is_no_return(enrolled, enrolled, "Moved On", today))
+
+    def test_enrolling_counts_as_a_visit(self):
+        today = timezone.localdate()
+        # No attendance record at all: the enrollment date still counts.
+        self.assertEqual(engagement_status(None, today, "", today - timedelta(days=5)), "Active")
+        self.assertEqual(engagement_status(None, today, "", today - timedelta(days=90)), "Inactive")
+
     def test_needs_call_rules(self):
         today = timezone.localdate()
-        profile = {"last_followup_date": None, "next_call_date": None, "current_status": ""}
+        profile = {"last_followup_date": None, "next_call_date": None, "current_status": "", "registration_date": today - timedelta(days=200)}
         self.assertTrue(needs_call("Inactive", today - timedelta(days=90), profile, today))
         self.assertFalse(needs_call("Active", today, profile, today))
         reached = {**profile, "last_followup_date": today - timedelta(days=3), "current_status": "Employed"}
@@ -127,13 +142,15 @@ class CentreScreensTests(TestCase):
         ]
         Employee.objects.bulk_create(students)
         cls.students = list(Employee.objects.filter(email__endswith="@rm.test").order_by("badge_id"))
+        # Everyone enrolled 90 days ago; most have no attendance records at
+        # all (older data), so their enrollment date is their only visit.
         StudentProfile.objects.bulk_create([
             StudentProfile(employee=student, career_goal="Defence" if index % 3 == 0 else "NEET UG", registration_date=cls.today - timedelta(days=90),
                            locality="Handwara" if index % 2 else "Kupwara", requirements=["Mock Tests"] if index % 4 == 0 else ["Study Space"])
             for index, student in enumerate(cls.students)
         ])
-        # 0: active, 1: slipping away, 2: inactive, everyone else: never came
-        for student, days_ago in zip(cls.students, (2, 45, 120)):
+        # 0: active, 1: slipping away, 2: inactive, everyone else: only came to enroll
+        for student, days_ago in zip(cls.students, (2, 45, 80)):
             day = cls.today - timedelta(days=days_ago)
             Attendance.objects.bulk_create([Attendance(employee_id=student, attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=time(10), attendance_worked_hour="00:00", minimum_hour="00:00")])
 
@@ -176,10 +193,14 @@ class CentreScreensTests(TestCase):
         profile.outcome = "Selected"
         profile.save()
         annotated = list(with_last_visit(student_queryset(), self.today))
-        for status in ("Active", "Dormant", "Inactive", "Never Attended", "Moved On"):
+        for status in ("Active", "Dormant", "Inactive", "Moved On"):
             via_db = set(with_last_visit(student_queryset(), self.today).filter(engagement_q(status, self.today)).values_list("id", flat=True))
             via_python = {row.id for row in annotated if engagement_status(row.last_visit, self.today, row.rm_profile.outcome) == status}
             self.assertEqual(via_db, via_python, status)
+        via_db = set(with_last_visit(student_queryset(), self.today).filter(no_return_q(self.today)).values_list("id", flat=True))
+        via_python = {row.id for row in annotated if is_no_return(row.last_visit, row.rm_profile.registration_date, engagement_status(row.last_visit, self.today, row.rm_profile.outcome), self.today)}
+        self.assertEqual(via_db, via_python)
+        self.assertEqual(len(via_db), len(self.students) - 4)  # all but the three who came back and the moved-on one
 
     def test_student_list_is_paginated_and_keeps_filters(self):
         response = self.client.get(reverse("rm-students"))
@@ -219,6 +240,35 @@ class CentreScreensTests(TestCase):
         self.assertIsNone(student.employee_user_id)
         self.assertEqual(student.dob.year, self.today.year - 18)
 
+    def test_enrolling_marks_the_student_present(self):
+        # Students enroll in person, wherever the form is opened from.
+        self._enroll()
+        student = Employee.objects.get(employee_first_name="Iqra")
+        visit = Attendance.objects.get(employee_id=student)
+        self.assertEqual((visit.attendance_date, visit.request_description), (self.today, ENROLLMENT_VISIT))
+        self.assertIsNotNone(visit.attendance_clock_in)
+
+    def test_an_older_paper_registration_records_that_day(self):
+        earlier = self.today - timedelta(days=200)
+        self._enroll(registration_date=earlier.isoformat())
+        student = Employee.objects.get(employee_first_name="Iqra")
+        visit = Attendance.objects.get(employee_id=student)
+        self.assertEqual(visit.attendance_date, earlier)
+        self.assertIsNone(visit.attendance_clock_in)
+        # Correcting the enrollment date moves the enrollment visit with it.
+        corrected = earlier - timedelta(days=20)
+        self.client.post(reverse("rm-edit-student", args=[student.id]), {
+            "full_name": "Iqra Wani", "phone": "9419123456", "gender": "female", "age": "18", "registration_date": corrected.isoformat(),
+        })
+        self.assertEqual(list(Attendance.objects.filter(employee_id=student).values_list("attendance_date", flat=True)), [corrected])
+
+    def test_migration_adds_missing_enrollment_visits(self):
+        from django.apps import apps
+
+        enrollment_visits.forwards(apps, None)
+        for student in self.students:
+            self.assertTrue(Attendance.objects.filter(employee_id=student, attendance_date=self.today - timedelta(days=90)).exists())
+
     def test_possible_duplicates_are_flagged_before_enrolling(self):
         response = self._enroll(phone=self.students[5].phone)
         self.assertContains(response, "already enrolled")
@@ -240,7 +290,8 @@ class CentreScreensTests(TestCase):
     def test_enter_marks_only_a_unique_exact_match(self):
         url, headers = reverse("youth-daily-attendance"), {"HTTP_HX_REQUEST": "true"}
         student = self.students[10]
-        self.assertContains(self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers), "is marked present")
+        response = self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers)
+        self.assertContains(response, "is marked present")
         self.assertContains(self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers), "had already checked in")
         self.assertEqual(Attendance.objects.filter(employee_id=student, attendance_date=self.today).count(), 1)
         # A partial match is listed, never marked.
@@ -305,10 +356,11 @@ class CentreScreensTests(TestCase):
 
     def test_call_list_saves_and_moves_on(self):
         self.client.force_login(self.coordinator)
-        page = self.client.get(reverse("rm-calls"), {"queue": "Never Attended"})
+        page = self.client.get(reverse("rm-calls"), {"queue": "once"})
         self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "hasn't been back")
         student = page.context["rows"][0]["student"]
-        response = self.client.post(reverse("rm-calls") + "?queue=Never+Attended", {
+        response = self.client.post(reverse("rm-calls") + "?queue=once", {
             "student_id": student.id, f"s{student.id}-result": "Plans to Return", f"s{student.id}-called_on": self.today.isoformat(),
             f"s{student.id}-notes": "Will come on Monday",
         }, HTTP_HX_REQUEST="true")
@@ -335,18 +387,22 @@ class CentreScreensTests(TestCase):
 
     def test_importing_students_previews_then_creates_records(self):
         text = "full_name,phone,gender,dob,area,career_goal,exam,enrollment_date,support_needed\n"
-        text += "Rafia Lone,94190 55555,F,2006-02-01,Handwara,Army,NDA,01-06-2024,Study Space; Mock Tests; Sports\n"
-        text += f"{self.students[3].get_full_name()},{self.students[3].phone},M,,,,,,\n"
-        text += "No Phone,,F,,,,,,\n"
+        text += "Rafia Lone,94190 55555,F,2006-02-01,Handwara,Army,NDA,01-06-2024,Study Space; Books / Study Material; Sports\n"
+        text += f"{self.students[3].get_full_name()},{self.students[3].phone},M,,,,,01-01-2024,\n"
+        text += "No Phone,,F,,,,,01-01-2024,\n"
+        text += "No Date,9419066666,F,,,,,,\n"
         preview = self._upload("students", text).context["preview"]
-        self.assertEqual((preview["new"], preview["exists"], preview["errors"]), (1, 1, 1))
+        self.assertEqual((preview["new"], preview["exists"], preview["errors"]), (1, 1, 2))
         self.client.post(reverse("rm-import"), {"kind": "students", "step": "confirm"})
         student = Employee.objects.get(employee_first_name="Rafia")
         profile = student.rm_profile
         self.assertEqual((student.phone, profile.career_goal, profile.defence_entry, profile.locality), ("9419055555", "Defence", "NDA", "Handwara"))
         self.assertEqual(profile.registration_date.isoformat(), "2024-06-01")
-        self.assertEqual(profile.requirements, ["Study Space", "Mock Tests", "Other"])
+        self.assertEqual(profile.requirements, ["Study Space", "Books / Study Material", "Other"])
         self.assertIsNone(student.employee_user_id)
+        # They came in to enroll: that day is their first visit.
+        visit = Attendance.objects.get(employee_id=student)
+        self.assertEqual((visit.attendance_date.isoformat(), visit.request_description), ("2024-06-01", ENROLLMENT_VISIT))
 
     def test_importing_past_attendance(self):
         day = (self.today - timedelta(days=100)).isoformat()
