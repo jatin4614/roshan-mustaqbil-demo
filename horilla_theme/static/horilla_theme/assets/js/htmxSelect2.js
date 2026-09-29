@@ -4254,6 +4254,12 @@ $(document).on("htmx:afterSwap", async function (evt) {
     if ($('[role="tooltip"]:visible').length) {
         $('[role="tooltip"]').hide();
     }
+    // The Roshan Mustaqbil centre screens don't use the HR app scripts, and
+    // reloading them after every live update (each keystroke on the
+    // attendance desk) costs a download each time on a slow connection.
+    if (document.querySelector(".rm-page")) {
+        return;
+    }
     cachedInstalledApps = await loadFromLocalStorage();
     // Try loading cached data from localStorage first
     if (cachedInstalledApps) {
