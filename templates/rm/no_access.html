@@ -1,0 +1,24 @@
+{% load static i18n %}<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{% trans "No access yet" %} | Roshan Mustaqbil</title>
+        <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/brand/rm-favicon-32.png' %}">
+        <link href="{% static 'cdn/googleapi/css/inter-font-style.css' %}" rel="stylesheet">
+        <link rel="stylesheet" href="{% static 'rm/rm.css' %}?v=3">
+        <style>body { margin: 0; }</style>
+    </head>
+    <body>
+        <main class="rm-login" style="grid-template-columns: minmax(0, 1fr)">
+            <section class="rm-login__panel">
+                <div class="rm-login__form">
+                    <img class="rm-login__logo" style="display: block" src="{% static 'images/brand/rm-emblem-96.png' %}" alt="Roshan Mustaqbil">
+                    <h1>{% trans "You don't have access yet" %}</h1>
+                    <p class="rm-login__sub">{% blocktrans with name=request.user.get_username %}You're signed in as “{{ name }}”, but this account hasn't been given a role at the centre. Ask the centre manager to add you on the Staff accounts page.{% endblocktrans %}</p>
+                    <a class="rm-btn rm-btn--primary" href="{% url 'logout' %}">{% trans "Sign out" %}</a>
+                </div>
+            </section>
+        </main>
+    </body>
+</html>

@@ -1,5 +1,6 @@
 {% load static i18n %}
 {% load horillafilters %}
+{% if youth_centre_mode and not initialize_database %}{% include "rm/login.html" %}{% else %}
 {% get_def_theme as theme_obj %}
 <!DOCTYPE html>
 <html>
@@ -253,3 +254,4 @@
         </script>
     </body>
 </html>
+{% endif %}

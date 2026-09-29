@@ -1,73 +1,423 @@
-"""Seed a realistic, non-HR Roshan Mustaqbil demonstration dataset."""
+"""Seed a realistic, non-HR Roshan Mustaqbil demonstration dataset.
 
-from datetime import date, time, timedelta
+Everything is derived from seeded random generators keyed on the student
+number (and, for visits, the date), so a first run always produces the same
+centre. Running it again later only tops up visits for students who are
+still coming (and fills in the day so far); it never rewrites students,
+profiles or follow-up calls that staff may have changed.
+
+``--reset`` removes earlier demo students, their visits and calls first.
+``--remove`` removes them and stops, for going live with real data.
+"""
+
+import random
+from datetime import time, timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Max, ProtectedError, Q
+from django.utils import timezone
 
-from attendance.models import Attendance
-from employee.models import Employee, StudentProfile
+from attendance.models import Attendance, AttendanceActivity, AttendanceLateComeEarlyOut
+from base.rm import CALL_BACK_AFTER_DAYS
+from employee.models import Employee, StudentFollowUp, StudentProfile
+
+DEMO_DOMAINS = ("@rm.demo", "@roshanmustaqbil.demo")
+
+MALE = ("Aadil", "Aamir", "Adnan", "Aijaz", "Arif", "Asif", "Bilal", "Danish", "Faisal", "Farhan", "Firdous", "Haris", "Irfan", "Ishfaq", "Javid", "Junaid", "Mudasir", "Mushtaq", "Nasir", "Owais", "Parvaiz", "Rayees", "Sajad", "Sameer", "Showkat", "Suhail", "Tanveer", "Tariq", "Umar", "Waseem", "Yasir", "Zahid", "Zubair", "Aqib", "Basit", "Mehraj", "Shahid", "Rizwan", "Imtiyaz", "Hilal")
+FEMALE = ("Aafreen", "Afshana", "Aiman", "Arifa", "Asma", "Bisma", "Heena", "Iqra", "Insha", "Mehvish", "Mehak", "Nadiya", "Nazia", "Nusrat", "Rafia", "Rubeena", "Rukhsana", "Sadaf", "Saima", "Shabnam", "Shazia", "Suhaila", "Tabassum", "Uzma", "Zainab", "Zoya", "Sana", "Mariya", "Tahira", "Rabia")
+SURNAMES = ("Bhat", "Dar", "Lone", "Mir", "Wani", "Sheikh", "Khan", "Malik", "Peer", "Shah", "Rather", "Ganie", "Qureshi", "Mughal", "Hajam", "Sofi", "Parray", "Najar", "Tantray", "Chalkoo", "Bhat", "Dar", "Lone", "Mir", "Wani")
+# Tehsils (weighted by distance from the centre) and a few villages in each.
+TEHSILS = (
+    ("Kupwara", 22, ("Kupwara town", "Batpora", "Darpora", "Bumhama")), ("Handwara", 16, ("Handwara", "Wadipora", "Nowgam")),
+    ("Trehgam", 9, ("Trehgam", "Dardpora")), ("Kralpora", 7, ("Kralpora", "Chandigam")), ("Lolab", 7, ("Lalpora", "Kalaroos road")),
+    ("Sogam", 5, ("Sogam",)), ("Villgam", 5, ("Villgam", "Hayhama")), ("Drugmulla", 5, ("Drugmulla", "Bohipora")),
+    ("Kalaroos", 4, ("Kalaroos",)), ("Karnah", 3, ("Tangdar", "Chitterkote")), ("Langate", 5, ("Langate", "Mawar")),
+    ("Qalamabad", 3, ("Qalamabad",)), ("Rajwar", 2, ("Rajwar",)), ("Zachaldara", 2, ("Zachaldara",)),
+    ("Magam", 2, ("Magam",)), ("Chowkibal", 2, ("Chowkibal",)), ("Machil", 1, ("Machil",)), ("Keran", 1, ("Keran",)),
+)
+EXPECTATIONS = (
+    "A quiet place to study every day.",
+    "Mock tests and guidance for the written exam.",
+    "Help choosing the right career path.",
+    "Books and study material I cannot afford.",
+    "Reliable internet for online classes and forms.",
+    "Someone to talk to about exam stress.",
+    "Physical training tips and interview practice.",
+    "Computer practice for online exams.",
+    "Guidance on filling application forms on time.",
+    "A senior who has cleared the exam to mentor me.",
+)
+REASONS = {
+    "Studying at School / College": "Classes clash with centre hours.",
+    "Preparing from Home": "Travel from the village is difficult.",
+    "Preparing at Another Institute": "Joined a coaching institute in Srinagar.",
+    "Plans to Return": "Was unwell for a few weeks.",
+    "Employed": "Took up a job to support the family.",
+    "Joined Armed Forces / Selected": "Selected, now in training.",
+    "Joined Professional Course": "Admitted to a degree programme outside the district.",
+    "Moved / Relocated": "Family moved out of Kupwara.",
+    "No Longer Interested": "Lost interest in the exam.",
+    "Unable to Contact": "",
+    "Wrong Number": "",
+    "Other": "Personal reasons.",
+}
+NOTES = {
+    "Unable to Contact": "Phone switched off; try the guardian.",
+    "Wrong Number": "Number belongs to someone else; ask at the next visit to the village.",
+    "Plans to Return": "Said they'll come back next week.",
+}
+STATUS_OUTCOMES = StudentProfile.STATUS_OUTCOMES
 
 
-FIRST_NAMES = ("Aamir", "Ayesha", "Danish", "Sara", "Rahul", "Fatima", "Imran", "Mehak", "Arjun", "Zoya", "Kabir", "Ira", "Rohan", "Nisha", "Farhan")
-LAST_NAMES = ("Ahmad", "Khan", "Sharma", "Bhat", "Singh", "Verma", "Mir", "Patel", "Kaur", "Nair")
-GOALS = ("Defence", "UPSC / Civil Services", "NEET UG", "NEET PG", "Other")
-PURPOSES = tuple(item[0] for item in StudentProfile.PURPOSES)
-REQUIREMENTS = StudentProfile.REQUIREMENT_CHOICES[:-1]
+def pick(rng, weighted):
+    """weighted: sequence of (value, weight)."""
+    values, weights = zip(*weighted)
+    return rng.choices(values, weights=weights, k=1)[0]
+
+
+def age_band_dob(rng, today):
+    age = pick(rng, ((rng.randint(15, 17), 18), (rng.randint(18, 21), 44), (rng.randint(22, 25), 27), (rng.randint(26, 30), 10), (rng.randint(31, 34), 1)))
+    return today - timedelta(days=age * 365 + rng.randint(0, 364)), age
+
+
+def goal_for(rng, age):
+    if age < 18:
+        return pick(rng, (("Defence", 50), ("NEET UG", 30), ("Other", 20)))
+    if age <= 21:
+        return pick(rng, (("Defence", 38), ("NEET UG", 27), ("UPSC / Civil Services", 10), ("Other", 25)))
+    if age <= 25:
+        return pick(rng, (("Defence", 12), ("UPSC / Civil Services", 38), ("NEET PG", 12), ("Other", 38)))
+    return pick(rng, (("UPSC / Civil Services", 45), ("NEET PG", 25), ("Other", 30)))
+
+
+def defence_entry_for(rng, age):
+    if age <= 19:
+        return pick(rng, (("NDA", 55), ("TES", 25), ("Agniveer", 20)))
+    if age <= 24:
+        return pick(rng, (("CDS", 30), ("AFCAT", 20), ("Agniveer", 30), ("Territorial Army / JKLI", 20)))
+    return pick(rng, (("CDS", 50), ("Territorial Army / JKLI", 50)))
+
+
+def target_exam_for(rng, goal):
+    if goal == "UPSC / Civil Services":
+        return pick(rng, (("UPSC Civil Services", 40), ("JKPSC (JKAS)", 25), ("JKSSB", 20), ("JK Police", 10), ("SSC", 5))), ""
+    if goal == "Other":
+        exam = pick(rng, (("JEE", 15), ("Banking", 15), ("Teaching", 15), ("Nursing / Paramedical", 12), ("Skill / Vocational", 20), ("JKSSB", 13), ("Other", 10)))
+        return exam, rng.choice(("Hotel management", "Journalism", "Fashion design", "Photography")) if exam == "Other" else ""
+    return "", ""
+
+
+def qualification_for(rng, age, goal):
+    if goal == "NEET PG":
+        return "Bachelor's Degree"
+    if age < 18:
+        return "Class 10"
+    if age <= 21:
+        return pick(rng, (("Class 12", 60), ("Diploma", 15), ("Bachelor's Degree", 25)))
+    if age <= 25:
+        return pick(rng, (("Bachelor's Degree", 65), ("Postgraduate", 15), ("Diploma", 10), ("Class 12", 10)))
+    return pick(rng, (("Bachelor's Degree", 50), ("Postgraduate", 40), ("Diploma", 10)))
+
+
+def institution_for(rng, qualification, goal):
+    if goal == "NEET PG":
+        return pick(rng, (("Government Medical College Srinagar", 60), ("SKIMS Medical College", 40)))
+    if qualification == "Class 10":
+        return pick(rng, (("Government Higher Secondary School Kupwara", 40), ("Government Higher Secondary School Trehgam", 25), ("Jawahar Navodaya Vidyalaya Kupwara", 20), ("Army Goodwill School", 15)))
+    if qualification == "Diploma":
+        return "Government Polytechnic Kupwara"
+    return pick(rng, (("Government Degree College Kupwara", 40), ("Government Degree College Handwara", 30), ("University of Kashmir", 20), ("IGNOU (distance)", 10)))
+
+
+def purpose_for(rng, goal):
+    if goal == "Other":
+        return pick(rng, (("Career Guidance", 38), ("Skill Development", 28), ("Self Study", 26), ("Other", 8)))
+    return pick(rng, (("Competitive Exam Preparation", 58), ("Self Study", 30), ("Career Guidance", 12)))
+
+
+REQUIREMENT_WEIGHTS = {
+    "Defence": (("Mock Tests", 60), ("Study Space", 45), ("Books / Study Material", 45), ("Exam Information", 40), ("Mentorship", 25), ("Career Guidance", 15), ("Counselling", 6)),
+    "NEET UG": (("Books / Study Material", 65), ("Study Space", 60), ("Mock Tests", 50), ("Internet", 30), ("Mentorship", 15), ("Counselling", 10)),
+    "NEET PG": (("Study Space", 70), ("Internet", 45), ("Books / Study Material", 40), ("Mock Tests", 35), ("Computer Access", 20)),
+    "UPSC / Civil Services": (("Study Space", 65), ("Books / Study Material", 60), ("Internet", 40), ("Computer Access", 30), ("Mentorship", 30), ("Mock Tests", 25), ("Exam Information", 15)),
+    "Other": (("Career Guidance", 55), ("Computer Access", 45), ("Skill Training", 40), ("Internet", 35), ("Counselling", 20), ("Study Space", 20)),
+}
+
+
+def requirements_for(rng, goal):
+    options = REQUIREMENT_WEIGHTS[goal]
+    wanted = rng.choice((1, 2, 2, 3, 3, 4))
+    chosen = []
+    while len(chosen) < wanted:
+        item = pick(rng, options)
+        if item not in chosen:
+            chosen.append(item)
+    return chosen
+
+
+def registration_date_for(rng, today):
+    # Registrations grew over two years: recent months are busier.
+    month_back = pick(rng, [(m, 26 - m * 0.7) for m in range(26)])
+    return today - timedelta(days=month_back * 30 + rng.randint(0, 29))
+
+
+def engagement_for(rng, registered_days_ago):
+    if registered_days_ago < 30:
+        return pick(rng, (("active", 60), ("never", 40)))
+    if registered_days_ago < 60:
+        return pick(rng, (("active", 38), ("dormant", 45), ("never", 17)))
+    if registered_days_ago <= 180:
+        return pick(rng, (("active", 20), ("dormant", 12), ("inactive", 55), ("never", 13)))
+    return pick(rng, (("active", 10), ("dormant", 7), ("inactive", 73), ("never", 10)))
+
+
+def prep_for(rng, registered_days_ago, age):
+    if rng.random() < 0.22:
+        return ""  # not asked yet
+    if registered_days_ago < 60:
+        return pick(rng, (("Just starting", 50), ("Building basics", 40), ("Regular practice & mock tests", 10)))
+    return pick(rng, (("Building basics", 28), ("Regular practice & mock tests", 40), ("Appeared before", 20 if age > 18 else 5), ("Awaiting result", 12)))
+
+
+DAY_FACTOR = {0: 1.0, 1: 1.0, 2: 1.0, 3: 0.95, 4: 0.75, 5: 0.85, 6: 0.0}  # the centre is closed on Sundays
+
+
+def arrival_time(rng):
+    slot = pick(rng, (("morning", 62), ("afternoon", 30), ("any", 8)))
+    if slot == "morning":
+        minutes = int(rng.gauss(10 * 60 + 5, 45))
+        if not 9 * 60 <= minutes <= 12 * 60 + 30:  # doors open at 9; no pile-up at the edges
+            minutes = rng.randint(9 * 60, 11 * 60)
+    elif slot == "afternoon":
+        minutes = int(rng.gauss(14 * 60 + 30, 50))
+        if not 13 * 60 <= minutes <= 17 * 60 + 30:
+            minutes = rng.randint(13 * 60 + 30, 16 * 60)
+    else:
+        minutes = rng.randint(9 * 60, 17 * 60 + 30)
+    return time(minutes // 60, minutes % 60)
+
+
+def active_rate(number):
+    return pick(random.Random(f"plan-{number}"), ((0.8, 20), (0.35, 35), (0.12, 45)))
+
+
+def visits_between(number, start, end, rate):
+    visits = {}
+    day = start
+    while day <= end:
+        day_rng = random.Random(f"visit-{number}-{day.isoformat()}")
+        if day_rng.random() < rate * DAY_FACTOR[day.weekday()]:
+            visits[day] = arrival_time(day_rng)
+        day += timedelta(days=1)
+    return visits
+
+
+def visit_plan(number, status, registered, today):
+    """Dates (and arrival times) this student visited, up to today."""
+    rng = random.Random(f"plan-{number}")
+    if status == "never":
+        return []
+    if status == "active":
+        rate = pick(rng, ((0.8, 20), (0.35, 35), (0.12, 45)))
+        start, end = max(registered, today - timedelta(days=150)), today
+        guarantee = today - timedelta(days=rng.randint(0, 20))
+    else:
+        age = (today - registered).days
+        gap = rng.randint(31, max(31, min(58, age))) if status == "dormant" else rng.randint(61, max(61, age))
+        end = today - timedelta(days=gap)
+        start = max(registered, end - timedelta(days=rng.randint(5, 60)))
+        rate = pick(rng, ((0.45, 30), (0.2, 70)))
+        guarantee = end
+    visits = visits_between(number, start, end, rate)
+    if guarantee.weekday() == 6:
+        guarantee -= timedelta(days=1)
+    guarantee = max(guarantee, registered)
+    visits.setdefault(guarantee, arrival_time(random.Random(f"visit-{number}-{guarantee.isoformat()}")))
+    if status != "active":
+        visits = {day: at for day, at in visits.items() if day <= end}
+    return sorted(visits.items())
+
+
+def call_history(rng, status, goal, last_visit, registered, today):
+    """Follow-up calls for a student who stopped coming: sometimes a missed
+    call first, then what they said."""
+    if status == "active" or (status == "dormant" and rng.random() > 0.45) or rng.random() > 0.62:
+        return []
+    final = pick(rng, (
+        ("Plans to Return", 35), ("Preparing from Home", 20), ("Studying at School / College", 20),
+        ("Unable to Contact", 15), ("Employed", 10),
+    )) if status == "dormant" else pick(rng, (
+        ("Preparing from Home", 22), ("Studying at School / College", 18), ("Preparing at Another Institute", 11),
+        ("Plans to Return", 8), ("Employed", 9), ("Unable to Contact", 12), ("Wrong Number", 2),
+        ("Joined Armed Forces / Selected", 6 if goal == "Defence" else 1), ("Joined Professional Course", 5),
+        ("Moved / Relocated", 4), ("No Longer Interested", 4),
+    ))
+    since = (last_visit or registered) + timedelta(days=3)
+    if since > today:
+        return []
+    last_call = since + timedelta(days=rng.randint(0, max(0, min(80, (today - since).days))))
+    calls = []
+    if final not in {"Unable to Contact", "Wrong Number"} and rng.random() < 0.35 and last_call - timedelta(days=8) >= since:
+        calls.append((last_call - timedelta(days=rng.randint(5, 8)), "Unable to Contact"))
+    calls.append((last_call, final))
+    return calls
 
 
 class Command(BaseCommand):
-    help = "Create 960 RM student records with realistic active, dormant and inactive attendance."
+    help = "Create RM demo students with realistic registrations, goals, visits and follow-up calls."
 
     def add_arguments(self, parser):
         parser.add_argument("--count", type=int, default=960)
+        parser.add_argument("--reset", action="store_true", help="Delete earlier demo students, visits and calls first.")
+        parser.add_argument("--remove", action="store_true", help="Delete the demo students, visits and calls, then stop.")
+
+    def _remove_demo(self):
+        demo_filter = Q()
+        for domain in DEMO_DOMAINS:
+            demo_filter |= Q(email__endswith=domain)
+        demo_ids = list(Employee.objects.filter(demo_filter, rm_profile__isnull=False).values_list("id", flat=True))
+        visits = Attendance.objects.filter(employee_id__in=demo_ids)
+        removed = visits.count()
+        # HR-side records that older demo data attached to these visits.
+        AttendanceLateComeEarlyOut.objects.filter(attendance_id__in=visits).delete()
+        AttendanceActivity.objects.filter(employee_id__in=demo_ids).delete()
+        visits.delete()  # per-row delete signals also clear work records
+        StudentProfile.objects.filter(employee_id__in=demo_ids).delete()  # calls go with them
+        try:
+            Employee.objects.filter(id__in=demo_ids).delete()
+        except ProtectedError:
+            Employee.objects.filter(id__in=demo_ids).update(is_active=False)
+        self.stdout.write(f"Removed {len(demo_ids)} demo students and {removed} visits.")
 
     @transaction.atomic
     def handle(self, *args, **options):
-        count, today = options["count"], date.today()
+        if options["remove"]:
+            self._remove_demo()
+            return
+        if options["reset"]:
+            self._remove_demo()
+        count = options["count"]
+        today = timezone.localdate()
+        now = timezone.localtime().replace(tzinfo=None)
         existing = {student.email: student for student in Employee.objects.filter(email__endswith="@rm.demo")}
-        new_students = []
+        attendance = self._top_up(existing, today, now) if existing else []
+
+        people, created, previous = {}, [], None
         for number in range(1, count + 1):
-            registration = f"YC-{number:04d}"
-            email = f"{registration.lower()}@rm.demo"
-            first, last = FIRST_NAMES[(number - 1) % len(FIRST_NAMES)], LAST_NAMES[(number * 3) % len(LAST_NAMES)]
-            if email not in existing:
-                new_students.append(Employee(email=email, employee_first_name=first, employee_last_name=last, badge_id=registration, phone=f"7006{number:06d}", gender="female" if number % 2 else "male", dob=date(1997 + number % 13, number % 12 + 1, number % 27 + 1), qualification=("Class 12", "Bachelor's Degree", "Diploma", "Postgraduate")[number % 4], address=f"Area {number % 30 + 1}, Srinagar", is_active=True))
-        Employee.objects.bulk_create(new_students, batch_size=200, ignore_conflicts=True)
-        students = {student.email: student for student in Employee.objects.filter(email__endswith="@rm.demo")}
-        profile_map = {profile.employee_id: profile for profile in StudentProfile.objects.filter(employee__email__endswith="@rm.demo")}
-        profile_create, profile_update, attendance_create = [], [], []
-        for number in range(1, count + 1):
-            registration, email = f"YC-{number:04d}", f"yc-{number:04d}@rm.demo"
+            email = f"rm-{number:04d}@rm.demo"
+            if email in existing:
+                continue
+            rng = random.Random(f"student-{number}")
+            dob, age = age_band_dob(rng, today)
+            goal = goal_for(rng, age)
+            female = rng.random() < {"Defence": 0.22, "NEET UG": 0.6, "NEET PG": 0.55, "UPSC / Civil Services": 0.4, "Other": 0.45}[goal]
+            first = rng.choice(FEMALE if female else MALE)
+            last = rng.choice(SURNAMES)
+            tehsil, _, villages = pick(rng, [((name, weight, villages), weight) for name, weight, villages in TEHSILS])
+            qualification = qualification_for(rng, age, goal)
+            fields = {
+                "employee_first_name": first, "employee_last_name": last, "badge_id": f"RM-{number:04d}",
+                "phone": f"9{rng.randint(419000000, 419999999)}", "gender": "female" if female else "male",
+                "dob": dob, "qualification": qualification, "address": f"{rng.choice(villages)}, {tehsil}", "is_active": True,
+            }
+            if number % 97 == 0 and previous:
+                # Siblings: same family phone, surname and village.
+                fields.update(phone=previous["phone"], employee_last_name=previous["employee_last_name"], address=previous["address"])
+            previous = fields
+            people[email] = (number, rng, age, goal, qualification, tehsil, fields)
+            created.append(Employee(email=email, **fields))
+        Employee.objects.bulk_create(created, batch_size=200)
+
+        students = {student.email: student for student in Employee.objects.filter(email__in=list(people))}
+        profiles, plans, status_totals = [], [], {"active": 0, "dormant": 0, "inactive": 0, "never": 0}
+        for email, (number, rng, age, goal, qualification, tehsil, fields) in people.items():
             student = students[email]
-            student.badge_id, student.phone, student.is_active = registration, f"7006{number:06d}", True
-            goal = GOALS[(number - 1) % len(GOALS)]
-            profile = profile_map.get(student.id) or StudentProfile(employee=student)
-            profile.career_goal = goal
-            profile.defence_entry = ("NDA", "TES", "Other Entry Scheme")[number % 3] if goal == "Defence" else ""
-            profile.purpose_of_rm = PURPOSES[number % len(PURPOSES)]
-            profile.purpose_other = "Local support and guidance" if profile.purpose_of_rm == "Other" else ""
-            profile.expectations = ("Quiet space for daily study.", "Access to books and mock tests.", "Career counselling and guidance.")[number % 3]
-            profile.requirements = [REQUIREMENTS[number % len(REQUIREMENTS)], REQUIREMENTS[(number + 3) % len(REQUIREMENTS)]]
-            profile.registration_date = today - timedelta(days=number % 720)
-            profile.institution = ("Government Degree College", "Higher Secondary School", "Community College")[number % 3]
-            profile.guardian_name, profile.guardian_phone = f"Guardian {first}", f"9900{number:06d}"
-            profile.notes = "Demo registration for RM planning."
-            profile.current_status = ("Studying at School / College", "Preparing from Home", "Preparing at Another Institute", "Employed", "Unable to Contact")[number % 5] if number > 210 else ""
-            profile.inactivity_reason = "Follow-up required to understand current engagement." if number > 210 else ""
-            (profile_update if profile.pk else profile_create).append(profile)
-            if number <= 140:
-                visit_days = [today - timedelta(days=offset) for offset in range(number % 5, 30, 6)]
-            elif number <= 230:
-                visit_days = [today - timedelta(days=31 + number % 30)]
-            elif number <= 850:
-                visit_days = [today - timedelta(days=61 + number % 300)]
-            else:
-                visit_days = []
-            for visit_day in visit_days:
-                attendance_create.append(Attendance(employee_id=student, attendance_date=visit_day, attendance_clock_in_date=visit_day, attendance_clock_in=time(9 + number % 4, number % 55), attendance_worked_hour="00:00", minimum_hour="00:00", request_description="Roshan Mustaqbil visit"))
-        Employee.objects.bulk_update(students.values(), ["badge_id", "phone", "is_active"], batch_size=200)
-        StudentProfile.objects.bulk_create(profile_create, batch_size=200)
-        StudentProfile.objects.bulk_update(profile_update, ["career_goal", "defence_entry", "purpose_of_rm", "purpose_other", "expectations", "requirements", "registration_date", "institution", "guardian_name", "guardian_phone", "notes", "current_status", "inactivity_reason"], batch_size=200)
-        Attendance.objects.bulk_create(attendance_create, batch_size=500, ignore_conflicts=True)
-        self.stdout.write(self.style.SUCCESS(f"RM demo data ready: {count} registered students ({len(new_students)} new), with visit history."))
+            registered = registration_date_for(rng, today)
+            status = engagement_for(rng, (today - registered).days)
+            status_totals[status] += 1
+            exam, detail = target_exam_for(rng, goal)
+            profile = StudentProfile(
+                employee=student, career_goal=goal, locality=tehsil,
+                defence_entry=defence_entry_for(rng, age) if goal == "Defence" else "",
+                target_exam=exam, goal_detail=detail, prep_stage=prep_for(rng, (today - registered).days, age),
+                target_year=today.year + pick(rng, ((0, 35), (1, 40), (2, 15))) if rng.random() < 0.8 else None,
+                purpose_of_rm=purpose_for(rng, goal), requirements=requirements_for(rng, goal),
+                expectations=rng.choice(EXPECTATIONS), registration_date=registered,
+                institution=institution_for(rng, qualification, goal),
+                guardian_name=f"{rng.choice(MALE)} {fields['employee_last_name']}", guardian_phone=f"9{rng.randint(596000000, 596999999)}",
+            )
+            profile.purpose_other = "Wants a safe place to spend the day productively." if profile.purpose_of_rm == "Other" else ""
+            visits = visit_plan(number, status, registered, today)
+            last_visit = visits[-1][0] if visits else None
+            calls = call_history(rng, status, goal, last_visit, registered, today)
+            returned = False
+            if calls and calls[-1][1] == "Plans to Return" and rng.random() < 0.55:
+                # Some students who promise to come back do: the call worked.
+                back = calls[-1][0] + timedelta(days=rng.randint(2, 9))
+                if back.weekday() == 6:
+                    back += timedelta(days=1)
+                if back <= today:
+                    extra = visits_between(number, back, today, 0.3)
+                    extra.setdefault(back, arrival_time(random.Random(f"visit-{number}-{back.isoformat()}")))
+                    visits = sorted({**dict(visits), **extra}.items())
+                    returned = True
+            for day, arrived in visits:
+                if day == today and arrived > now.time():
+                    continue  # not arrived yet
+                attendance.append(Attendance(
+                    employee_id=student, attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=arrived,
+                    attendance_worked_hour="00:00", minimum_hour="00:00", request_description="Roshan Mustaqbil visit",
+                ))
+            if calls and returned:
+                profile.last_followup_date = calls[-1][0]  # called, then came back
+            if calls and not returned:
+                called_on, result = calls[-1]
+                profile.current_status, profile.last_followup_date = result, called_on
+                profile.inactivity_reason = REASONS.get(result, "")
+                profile.followup_notes = NOTES.get(result, "Called the student.")
+                if result in CALL_BACK_AFTER_DAYS:
+                    profile.next_call_date = called_on + timedelta(days=CALL_BACK_AFTER_DAYS[result])
+                if result in STATUS_OUTCOMES:
+                    profile.outcome, profile.outcome_date = STATUS_OUTCOMES[result], called_on
+            profiles.append(profile)
+            plans.append((profile, calls))
+        StudentProfile.objects.bulk_create(profiles, batch_size=200)
+        saved = {profile.employee_id: profile for profile in StudentProfile.objects.filter(employee__email__in=list(people))}
+        followups = []
+        for profile, calls in plans:
+            for called_on, result in calls:
+                followups.append(StudentFollowUp(
+                    student=saved[profile.employee_id], called_on=called_on, result=result, reason=REASONS.get(result, ""),
+                    notes=NOTES.get(result, "Called the student."),
+                    next_call_date=called_on + timedelta(days=CALL_BACK_AFTER_DAYS[result]) if result in CALL_BACK_AFTER_DAYS else None,
+                ))
+        StudentFollowUp.objects.bulk_create(followups, batch_size=500)
+        before = Attendance.objects.filter(employee_id__email__endswith="@rm.demo").count()
+        Attendance.objects.bulk_create(attendance, batch_size=500, ignore_conflicts=True)
+        after = Attendance.objects.filter(employee_id__email__endswith="@rm.demo").count()
+        self.stdout.write(self.style.SUCCESS(
+            f"RM demo data ready: {len(created)} new students (planned {status_totals}), {len(followups)} calls, "
+            f"{after - before} new visits ({after} demo visits in total)."
+        ))
+
+    def _top_up(self, existing, today, now):
+        """Keep students who are still coming coming, up to the current time."""
+        last_visits = dict(
+            Attendance.objects.filter(employee_id__in=existing.values()).order_by().values("employee_id")
+            .annotate(last=Max("attendance_date")).values_list("employee_id", "last")
+        )
+        visits = []
+        for email, student in existing.items():
+            last = last_visits.get(student.id)
+            if not last or (today - last).days >= 30 or last >= today:
+                continue
+            number = int(email[3:7])
+            for day, arrived in sorted(visits_between(number, last + timedelta(days=1), today, active_rate(number)).items()):
+                if day == today and arrived > now.time():
+                    continue
+                visits.append(Attendance(
+                    employee_id=student, attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=arrived,
+                    attendance_worked_hour="00:00", minimum_hour="00:00", request_description="Roshan Mustaqbil visit",
+                ))
+        return visits

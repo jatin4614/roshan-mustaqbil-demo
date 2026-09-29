@@ -3,11 +3,13 @@
 import os
 from datetime import date
 
+from django.contrib.auth.models import Group
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from base.models import Company
 from employee.models import Employee, EmployeeWorkInformation
+from base.rm import ROLE_GROUPS
 from horilla_auth.models import HorillaUser
 from horilla_theme.models import CompanyTheme, HorillaColorTheme
 
@@ -25,6 +27,12 @@ class Command(BaseCommand):
             "--username",
             default=os.environ.get("DEMO_ADMIN_USERNAME", "admin"),
             help="Initial admin username (defaults to DEMO_ADMIN_USERNAME or admin).",
+        )
+        parser.add_argument(
+            "--demo-staff",
+            action="store_true",
+            help="Also create a front-desk user 'desk' and a coordinator 'coordinator' "
+            "with the same password, to show the roles in a demo.",
         )
 
     @transaction.atomic
@@ -104,8 +112,33 @@ class Command(BaseCommand):
         work_info.mobile = work_info.mobile or employee.phone
         work_info.save()
 
+        # The three staff roles used by the centre screens.
+        groups = {key: Group.objects.get_or_create(name=name)[0] for key, name in ROLE_GROUPS.items()}
+        created_staff = []
+        if options["demo_staff"]:
+            for staff_username, role, first, last, phone in (
+                ("desk", "frontdesk", "Front", "Desk", "7000000001"),
+                ("coordinator", "coordinator", "Centre", "Coordinator", "7000000002"),
+            ):
+                staff_user, made = HorillaUser.objects.get_or_create(
+                    username=staff_username, defaults={"email": f"{staff_username}@staff.rm.local"}
+                )
+                if made:
+                    staff_user.set_password(password)
+                    staff_user.save()
+                    created_staff.append(staff_username)
+                staff_user.groups.add(groups[role])
+                staff_employee, _ = Employee.objects.get_or_create(
+                    employee_user_id=staff_user,
+                    defaults={"employee_first_name": first, "employee_last_name": last, "email": staff_user.email, "phone": phone},
+                )
+                EmployeeWorkInformation.objects.update_or_create(
+                    employee_id=staff_employee, defaults={"company_id": company, "email": staff_user.email, "mobile": phone}
+                )
+
         self.stdout.write(
             self.style.SUCCESS(
                 f"Roshan Mustaqbil demo is ready. Administrator: {username}"
+                + (f"; demo staff: {', '.join(created_staff)}" if created_staff else "")
             )
         )

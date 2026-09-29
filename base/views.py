@@ -1188,6 +1188,10 @@ def home(request):
     """
     from base.dashboard_roles import can_see_analytics_home, resolve_home_role
 
+    if getattr(settings, "YOUTH_CENTRE_MODE", False):
+        from base.rm_access import rm_home
+
+        return rm_home(request)
     if can_see_analytics_home(resolve_home_role(request)):
         return redirect("dashboard")
     return redirect("ess-dashboard")

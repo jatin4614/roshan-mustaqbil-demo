@@ -1,1 +1,126 @@
-{% extends "index.html" %}{% block content %}<div class="oh-wrapper rm-shell space-y-5">{% include "rm/dashboard_header.html" with title="Dashboard" subtitle="RM management overview — registration, engagement, attendance and student needs." %}<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">{% include "rm/kpi.html" with label="Registered Students" value=kpis.registered %}{% include "rm/kpi.html" with label="Active Students" value=kpis.active %}{% include "rm/kpi.html" with label="Dormant Students" value=kpis.dormant %}{% include "rm/kpi.html" with label="Inactive Students" value=kpis.inactive %}{% include "rm/kpi.html" with label="Present Today" value=kpis.today %}{% include "rm/kpi.html" with label="New This Month" value=kpis.new_month %}</div><div class="grid gap-5 lg:grid-cols-2">{% include "rm/chart_card.html" with title="Engagement Status" data=charts.engagement %}{% include "rm/trend_card.html" with title="Daily Visits" data=trend %}{% include "rm/chart_card.html" with title="Students by Career Goal" data=charts.goals %}{% include "rm/chart_card.html" with title="Purpose of Coming to RM" data=charts.purpose %}</div><div class="grid gap-5 lg:grid-cols-2">{% include "rm/chart_card.html" with title="Requirements from RM" data=charts.requirements %}{% include "rm/chart_card.html" with title="Students by Age Group" data=charts.age %}</div></div>{% endblock %}
+{% extends "index.html" %}
+{% block title %}Dashboard | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page">
+    <header class="rm-head">
+        <div>
+            <h1 class="rm-head__title">Dashboard</h1>
+            <p class="rm-head__sub">{{ today_label }}</p>
+        </div>
+        <div class="rm-head__actions">
+            <a class="rm-btn rm-btn--secondary" href="{% url 'rm-enroll-student' %}">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 4a1 1 0 0 1 1 1v4h4a1 1 0 1 1 0 2h-4v4a1 1 0 1 1-2 0v-4H5a1 1 0 1 1 0-2h4V5a1 1 0 0 1 1-1z"/></svg>
+                Enroll student
+            </a>
+            <a class="rm-btn rm-btn--primary" href="{% url 'youth-daily-attendance' %}">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0z" clip-rule="evenodd"/></svg>
+                Mark attendance
+            </a>
+        </div>
+    </header>
+
+    <section class="rm-card rm-pulse" aria-labelledby="pulse-title">
+        <div>
+            <h2 id="pulse-title" class="rm-pulse__hero"><strong>{{ active }}</strong>of the centre's <em>{{ current_total }}</em> current students came in the last 30 days.</h2>
+            <p style="margin: 10px 0 0">
+                {% if active_change < 0 %}<span class="rm-delta rm-delta--down">▼ {{ active_change|stringformat:"d"|slice:"1:" }} fewer than 30 days ago</span>
+                {% elif active_change > 0 %}<span class="rm-delta rm-delta--up">▲ {{ active_change }} more than 30 days ago</span>
+                {% else %}<span class="rm-delta rm-delta--flat">Same as 30 days ago</span>{% endif %}
+            </p>
+            <ul class="rm-legend">
+                {% for status in engagement %}
+                    <li>
+                        <a href="{{ status.url }}">
+                            <span class="rm-swatch k-{{ status.key }}"></span>
+                            <span class="rm-legend__name">{{ status.label }}<span class="rm-legend__help">{% if status.status == "Moved On" and moved.selected %}{{ moved.selected }} selected; the rest joined a course, moved away or stopped{% else %}{{ status.help }}{% endif %}</span></span>
+                            <span class="rm-legend__count">{{ status.count }}</span>
+                            <span class="rm-legend__share">{{ status.share }}</span>
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+        <div>
+            <div class="rm-card__head" style="margin-bottom: 8px">
+                <div>
+                    <h3 class="rm-card__title">Active students over the last six months</h3>
+                    <p class="rm-card__meta">Each point counts the students who came at least once in the 30 days before it</p>
+                </div>
+            </div>
+            {% include "rm/charts/line.html" with chart=trend caption="Active students each week, last six months" %}
+        </div>
+    </section>
+
+    <section class="rm-kpis" style="--rm-kpi-count: 4" aria-label="Key numbers">
+        <a class="rm-kpi rm-kpi--now" href="{% url 'youth-daily-attendance' %}">
+            <span class="rm-kpi__label">Present today, so far</span>
+            <div class="rm-kpi__value">{{ kpis.today }}</div>
+            <div class="rm-kpi__note">{% if kpis.typical is not None %}By this time on a typical open day: <b>{{ kpis.typical }}</b>{% else %}No visits recorded yet{% endif %}</div>
+        </a>
+        <a class="rm-kpi" href="{% url 'rm-attendance-dashboard' %}">
+            <span class="rm-kpi__label">Visits per active student</span>
+            <div class="rm-kpi__value">{{ kpis.median_visits|floatformat:"-1" }}</div>
+            <div class="rm-kpi__note">Typical number in 30 days; <b>{{ kpis.rare }}</b> of {{ kpis.active_visitors }} came only once or twice</div>
+        </a>
+        <a class="rm-kpi" href="{% url 'rm-students' %}?registered=this_month&amp;sort=newest">
+            <span class="rm-kpi__label">Enrolled this month, so far</span>
+            <div class="rm-kpi__value">{{ kpis.enrolled_month }}</div>
+            <div class="rm-kpi__note"><b>{{ kpis.enrolled_month_came }}</b> have come in; {{ kpis.enrolled_last_month }} enrolled last month</div>
+        </a>
+        <a class="rm-kpi{% if kpis.due %} rm-kpi--alert{% endif %}" href="{% url 'rm-calls' %}">
+            <span class="rm-kpi__label">Waiting for a call</span>
+            <div class="rm-kpi__value">{{ kpis.due }}</div>
+            <div class="rm-kpi__note">Stopped coming and not called since; <b>{{ kpis.due_dormant }}</b> only just slipped away</div>
+        </a>
+    </section>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Who to call</h2>
+                    <p class="rm-card__meta">{{ calls_week }} call{{ calls_week|pluralize }} logged this week. Start at the top: they're the easiest to bring back.</p>
+                </div>
+                {% if rm_role != "frontdesk" %}<a class="rm-card__link" href="{% url 'rm-calls' %}">Open the call list</a>{% endif %}
+            </div>
+            <ul class="rm-queue">
+                {% for queue in queues %}
+                    <li><a href="{{ queue.url }}"><b>{{ queue.label }}</b><span class="rm-queue__count">{{ queue.count }}</span><small>{{ queue.help }}</small></a></li>
+                {% endfor %}
+            </ul>
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Checked in today</h2>
+                    <p class="rm-card__meta">{% if kpis.today > checkins|length %}Latest {{ checkins|length }} of {{ kpis.today }}{% else %}Latest first{% endif %}</p>
+                </div>
+                <a class="rm-card__link" href="{% url 'youth-daily-attendance' %}">Mark attendance</a>
+            </div>
+            {% include "rm/partials/checkin_list.html" %}
+        </section>
+    </div>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">What happened to students who stopped coming</h2>
+                    <p class="rm-card__meta">{{ aftermath_total }} students: inactive, never came, or moved on. From follow-up calls; click a bar for the list.</p>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=aftermath empty="No one has stopped coming." %}
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Career goals</h2>
+                    <p class="rm-card__meta">Share of the {{ current_total }} current students</p>
+                </div>
+                {% if rm_role != "frontdesk" %}<a class="rm-card__link" href="{% url 'youth-centre-goals' %}">Goal details</a>{% endif %}
+            </div>
+            {% include "rm/charts/bars.html" with rows=goals dots=True %}
+        </section>
+    </div>
+</div>
+{% endblock %}

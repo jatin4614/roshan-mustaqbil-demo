@@ -1,0 +1,8 @@
+<li class="rm-call rm-call--saved" data-call-saved>
+    <span>Saved for <b>{{ student.get_full_name }}</b>: {{ result_label }}.{% if entry.next_call_date %} They'll be back on the list on {{ entry.next_call_date|date:"j M" }}.{% endif %}</span>
+</li>
+<div class="rm-kpi" id="rm-calls-today" hx-swap-oob="true">
+    <span class="rm-kpi__label">Calls logged today</span>
+    <div class="rm-kpi__value">{{ stats.today }}</div>
+    <div class="rm-kpi__note"><b>{{ stats.mine_today }}</b> by you</div>
+</div>

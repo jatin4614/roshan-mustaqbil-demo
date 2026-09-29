@@ -1,1 +1,123 @@
-{% extends "index.html" %}{% block content %}<div class="oh-wrapper rm-shell space-y-5">{% include "rm/dashboard_header.html" with title="Attendance Dashboard" subtitle="Daily RM footfall and visit behaviour — separate from management analytics." %}<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{% include "rm/kpi.html" with label="Present Today" value=kpis.today %}{% include "rm/kpi.html" with label="Unique This Week" value=kpis.week %}{% include "rm/kpi.html" with label="Unique This Month" value=kpis.month %}{% include "rm/kpi.html" with label="Average Daily Visits" value=kpis.average_daily %}{% include "rm/kpi.html" with label="Registered Students" value=kpis.registered %}</div><div class="grid gap-5 lg:grid-cols-2">{% include "rm/trend_card.html" with title="Daily Visits" data=trend %}<section class="rm-card rounded-2xl bg-white p-6"><p class="text-xs font-bold uppercase tracking-wider text-teal-700">Today</p><h2 class="mt-1 text-lg font-bold">Last Check-ins</h2><div class="mt-4 space-y-3">{% for visit in recent %}<div class="flex justify-between border-b border-slate-100 pb-3"><span><b>{{ visit.employee_id.get_full_name }}</b><small class="block text-slate-500">{{ visit.employee_id.badge_id }} · {{ visit.employee_id.rm_profile.career_goal }}</small></span><b class="text-teal-700">{{ visit.attendance_clock_in|time:"H:i" }}</b></div>{% empty %}<p class="text-slate-500">No check-ins today.</p>{% endfor %}</div></section></div><div class="grid gap-5 lg:grid-cols-2">{% include "rm/chart_card.html" with title="Career Goals of Registered Students" data=charts.goals %}{% include "rm/chart_card.html" with title="Current Status of Inactive Students" data=charts.inactive_status %}</div></div>{% endblock %}
+{% extends "index.html" %}
+{% block title %}Attendance dashboard | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page">
+    <header class="rm-head">
+        <div>
+            <h1 class="rm-head__title">Attendance dashboard</h1>
+            <p class="rm-head__sub">When students come, how often, and who keeps coming back.</p>
+        </div>
+        <div class="rm-head__actions">
+            <nav class="rm-seg" aria-label="Period">
+                {% for option in ranges %}
+                    <a href="?days={{ option }}"{% if option == days %} aria-current="true"{% endif %}>{{ option }} days</a>
+                {% endfor %}
+            </nav>
+            <a class="rm-btn rm-btn--primary" href="{% url 'youth-daily-attendance' %}">Mark attendance</a>
+        </div>
+    </header>
+
+    <section class="rm-kpis" style="--rm-kpi-count: 4" aria-label="Key numbers">
+        <a class="rm-kpi rm-kpi--now" href="{% url 'youth-daily-attendance' %}">
+            <span class="rm-kpi__label">Present today, so far</span>
+            <div class="rm-kpi__value">{{ kpis.today }}</div>
+            <div class="rm-kpi__note">{% if kpis.typical is not None %}By this time on a typical open day: <b>{{ kpis.typical }}</b>{% else %}No visits recorded yet{% endif %}</div>
+        </a>
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Students this week</span>
+            <div class="rm-kpi__value">{{ kpis.week_unique }}</div>
+            <div class="rm-kpi__note">Came in the last 7 days; <b>{{ kpis.new_this_week }}</b> for the first time</div>
+        </div>
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Students in {{ days }} days</span>
+            <div class="rm-kpi__value">{{ kpis.range_unique }}</div>
+            <div class="rm-kpi__note"><b>{{ kpis.range_visits }}</b> visits over {{ kpis.open_days }} open day{{ kpis.open_days|pluralize }}</div>
+        </div>
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Visits per student</span>
+            <div class="rm-kpi__value">{{ kpis.median|floatformat:"-1" }}</div>
+            <div class="rm-kpi__note">The typical student's visits in {{ days }} days</div>
+        </div>
+    </section>
+
+    <div class="rm-grid rm-grid--main">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Daily visits</h2>
+                    <p class="rm-card__meta">Last {{ days }} days. Grey marks days with fewer than 5 visits, which don't count as open days.</p>
+                </div>
+                <a class="rm-card__link" href="{% url 'youth-attendance-history' %}">Attendance history</a>
+            </div>
+            {% include "rm/charts/columns.html" with chart=daily now_label="Today, so far" cls="rm-cols--tall" caption="Daily visits" %}
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Checked in today</h2>
+                    <p class="rm-card__meta">{{ kpis.today }} student{{ kpis.today|pluralize }}, latest first</p>
+                </div>
+                <a class="rm-card__link" href="{% url 'youth-daily-attendance' %}">Mark attendance</a>
+            </div>
+            {% include "rm/partials/checkin_list.html" with scroll=True %}
+        </section>
+    </div>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Busiest days of the week</h2>
+                    <p class="rm-card__meta">Average visits on each open day, last {{ days }} days</p>
+                </div>
+            </div>
+            {% include "rm/charts/columns.html" with chart=weekday cls="rm-cols--short rm-cols--labels" caption="Average visits by weekday" %}
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Busiest times of day</h2>
+                    <p class="rm-card__meta">Average check-ins per hour on an open day, by the time the desk marked them</p>
+                </div>
+            </div>
+            {% include "rm/charts/columns.html" with chart=hours cls="rm-cols--short rm-cols--labels" caption="Average check-ins by hour" %}
+        </section>
+    </div>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Most regular students</h2>
+                    <p class="rm-card__meta">Visits out of {{ kpis.open_days }} open day{{ kpis.open_days|pluralize }}</p>
+                </div>
+            </div>
+            <ul class="rm-list">
+                {% for row in regulars %}
+                    <li class="rm-list__item">
+                        <a class="rm-person" href="{% url 'rm-student-profile' row.id %}" style="flex: 1">
+                            <span class="rm-avatar k-{{ row.goal_key }}">{{ row.initials }}</span>
+                            <span class="rm-person__text" style="flex: 1">
+                                <span class="rm-person__name">{{ row.name }}</span>
+                                <span class="rm-meter" aria-hidden="true"><span style="width: {{ row.width }}%"></span></span>
+                            </span>
+                        </a>
+                        <span class="rm-list__time">{{ row.total }} <span class="rm-muted" style="font-weight: 400">visits</span></span>
+                    </li>
+                {% empty %}
+                    <li class="rm-empty">No visits in this period.</li>
+                {% endfor %}
+            </ul>
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">How often each goal group comes</h2>
+                    <p class="rm-card__meta">Average visits per student who came in the last {{ days }} days</p>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=goal_intensity dots=True empty="No visits in this period." %}
+        </section>
+    </div>
+</div>
+{% endblock %}

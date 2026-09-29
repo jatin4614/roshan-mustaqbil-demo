@@ -103,6 +103,19 @@ def sync_session_ids(request, key, queryset):
 
 
 BREADCRUMB_URL_NAMES = {
+    # Roshan Mustaqbil centre screens
+    "mark-attendance": "Mark attendance",
+    "attendance-dashboard": "Attendance dashboard",
+    "attendance-history": "Attendance history",
+    "enroll": "Enroll student",
+    "inactive": "Inactive students",
+    "goals": "Career goals",
+    "calls": "Follow-up calls",
+    "import": "Import",
+    "staff": "Staff accounts",
+    "visits": "Visits",
+    "remove": "Remove visit",
+    "edit": "Edit",
     "monthly-summary": "Monthly Summary",
     "ess": "Employee",
     "offboarding": "Offboarding",

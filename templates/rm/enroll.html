@@ -1,1 +1,66 @@
-{% extends "index.html" %}{% block content %}<div class="oh-wrapper max-w-5xl"><header class="mb-5"><p class="text-sm font-semibold text-primary-600">Roshan Mustaqbil</p><h1 class="text-3xl font-bold">{% if student %}Edit Student{% else %}Enroll Student{% endif %}</h1><p class="text-neutral-500">A simple RM registration — no employment or payroll details.</p></header><form method="post" class="space-y-5">{% csrf_token %}{% if form.non_field_errors %}<div class="rounded-xl bg-red-50 p-4 text-red-700">{{ form.non_field_errors }}</div>{% endif %}<section class="rounded-2xl bg-white p-6 shadow-card"><h2 class="text-xl font-bold">Basic Information</h2><div class="mt-4 grid gap-4 md:grid-cols-2">{% for field in form %}{% if field.name in 'registration_number full_name phone email dob gender address qualification institution' %}<div {% if field.name == 'address' %}class="md:col-span-2"{% endif %}><label class="mb-1 block text-sm font-semibold">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<p class="text-sm text-red-600">{{ error }}</p>{% endfor %}</div>{% endif %}{% endfor %}</div></section><section class="rounded-2xl bg-white p-6 shadow-card"><h2 class="text-xl font-bold">RM Information</h2><div class="mt-4 grid gap-4 md:grid-cols-2">{% for field in form %}{% if field.name in 'registration_date purpose_of_rm purpose_other career_goal defence_entry expectations requirements requirements_other' %}<div {% if field.name == 'expectations' or field.name == 'requirements' %}class="md:col-span-2"{% endif %}><label class="mb-1 block text-sm font-semibold">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<p class="text-sm text-red-600">{{ error }}</p>{% endfor %}</div>{% endif %}{% endfor %}</div></section><section class="rounded-2xl bg-white p-6 shadow-card"><h2 class="text-xl font-bold">Optional Information</h2><div class="mt-4 grid gap-4 md:grid-cols-2">{% for field in form %}{% if field.name in 'guardian_name guardian_phone notes' %}<div {% if field.name == 'notes' %}class="md:col-span-2"{% endif %}><label class="mb-1 block text-sm font-semibold">{{ field.label }}</label>{{ field }}</div>{% endif %}{% endfor %}</div></section><button class="rounded-xl bg-primary-600 px-6 py-3 font-bold text-white hover:bg-primary-700">Save Student</button></form></div><style>input,select,textarea{width:100%;border:1px solid #d4d4d8;border-radius:.6rem;padding:.7rem}ul{list-style:none}.errorlist{color:#dc2626}</style>{% endblock %}
+{% extends "index.html" %}
+{% block title %}{% if student %}Edit {{ student.get_full_name }}{% else %}Enroll a student{% endif %} | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page rm-page--narrow">
+    <header class="rm-head">
+        <div>
+            {% if student %}<a class="rm-back" href="{% url 'rm-student-profile' student.id %}">‹ {{ student.get_full_name }}</a>{% elif from_desk %}<a class="rm-back" href="{% url 'youth-daily-attendance' %}">‹ Mark attendance</a>{% else %}<a class="rm-back" href="{% url 'rm-students' %}">‹ All students</a>{% endif %}
+            <h1 class="rm-head__title">{% if student %}Edit student details{% else %}Enroll a student{% endif %}</h1>
+            <p class="rm-head__sub">Fields marked <span class="rm-field__req">*</span> are required. Everything else can be filled in later.</p>
+        </div>
+    </header>
+
+    <form method="post" class="rm-form" data-conditional novalidate>
+        {% csrf_token %}
+        {% if from_desk %}<input type="hidden" name="next" value="desk">{% endif %}
+
+        {% if form.duplicates %}
+            <div class="rm-notice" role="alert" style="display: grid; gap: 10px; justify-content: stretch">
+                <span><b>This may be a student who's already enrolled.</b> Check before enrolling again:</span>
+                <ul class="rm-list">
+                    {% for match in form.duplicates %}
+                        <li class="rm-list__item">
+                            <span class="rm-person"><span class="rm-person__text"><span class="rm-person__name">{{ match.get_full_name }}</span><span class="rm-person__sub">{{ match.badge_id }}, {{ match.phone }}{% if match.rm_profile.guardian_name %}, guardian {{ match.rm_profile.guardian_name }}{% endif %}</span></span></span>
+                            <a class="rm-btn rm-btn--secondary rm-btn--sm" href="{% url 'rm-student-profile' match.id %}">Open</a>
+                        </li>
+                    {% endfor %}
+                </ul>
+                <label style="display: flex; gap: 8px; align-items: center; font-weight: 600"><input type="checkbox" name="confirm_new" value="on"> {{ form.confirm_new.label }}</label>
+            </div>
+        {% elif form.errors %}
+            <div class="rm-flash rm-flash--danger" role="alert"><div class="rm-flash__body"><span class="rm-flash__icon">!</span><span>Some details need attention. They're marked below.</span></div></div>
+        {% endif %}
+
+        {% for section in form.sections %}
+            <section class="rm-card rm-form__section">
+                <div class="rm-form__intro">
+                    <h2>{{ section.title }}</h2>
+                    <p>{{ section.hint }}</p>
+                </div>
+                <div class="rm-form__fields">
+                    {% for row in section.rows %}
+                        {% with field=row.field %}
+                            <div class="rm-field{% if row.wide %} rm-field--wide{% endif %}{% if field.errors %} rm-field--error{% endif %}"{% if row.show_when %} data-show-when="{{ row.show_when }}"{% endif %}>
+                                {% if field.name == "requirements" %}
+                                    <span class="rm-field__label" id="{{ field.auto_id }}_label">{{ field.label }}</span>
+                                    <div class="rm-choices" role="group" aria-labelledby="{{ field.auto_id }}_label">{{ field }}</div>
+                                {% else %}
+                                    <label for="{{ field.id_for_label }}">{{ field.label }}{% if row.required %}<span class="rm-field__req" aria-hidden="true">*</span>{% endif %}</label>
+                                    {{ field }}
+                                {% endif %}
+                                {% if field.help_text %}<p class="rm-field__help">{{ field.help_text }}</p>{% endif %}
+                                {% for error in field.errors %}<p class="rm-field__error">{{ error }}</p>{% endfor %}
+                            </div>
+                        {% endwith %}
+                    {% endfor %}
+                </div>
+            </section>
+        {% endfor %}
+
+        <div class="rm-form__actions">
+            <a class="rm-btn rm-btn--secondary" href="{% if student %}{% url 'rm-student-profile' student.id %}{% elif from_desk %}{% url 'youth-daily-attendance' %}{% else %}{% url 'rm-students' %}{% endif %}">Cancel</a>
+            <button class="rm-btn rm-btn--primary" type="submit">{% if student %}Save changes{% elif from_desk %}Enroll and mark present{% else %}Enroll student{% endif %}</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

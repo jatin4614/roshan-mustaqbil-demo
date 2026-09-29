@@ -7,13 +7,20 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title class="time-runner stop-runner">{{ white_label_company_name }}</title>
+        <title class="time-runner stop-runner">{% block title %}{{ white_label_company_name }}{% endblock %}</title>
         <link rel="stylesheet" href="{% static 'build/css/sweetalert2.min.css' %}">
+        {% if not rm_page %}
         <link rel="stylesheet" href="{% static 'build/css/summernote-lite.min.css' %}">
         <link rel="stylesheet" href="{% static 'build/css/orgChart.css' %}">
         <link rel="stylesheet" href="{% static 'build/css/driver.min.css' %}">
+        {% endif %}
 
-        <link rel="manifest" href="{% static 'build/manifest.json' %}">
+        <link rel="manifest" href="{% if youth_centre_mode %}{% static 'rm/manifest.json' %}{% else %}{% static 'build/manifest.json' %}{% endif %}">
+        {% if youth_centre_mode %}
+        <link rel="apple-touch-icon" sizes="180x180" href="{% static 'images/brand/rm-apple-touch-180.png' %}">
+        <link rel="icon" type="image/png" sizes="32x32" href="{% static 'images/brand/rm-favicon-32.png' %}">
+        <link rel="icon" type="image/png" sizes="16x16" href="{% static 'images/brand/rm-favicon-16.png' %}">
+        {% else %}
         <link
             rel="apple-touch-icon"
             sizes="180x180"
@@ -31,6 +38,7 @@
             sizes="16x16"
             href="{% if white_label_company.icon %}{{white_label_company.icon.url}} {% else %}{% static 'favicons/favicon-16x16.png' %}{% endif %}"
         >
+        {% endif %}
 
         {% comment %} defer, not removed: tailwind.css below is a periodically
            re-exported snapshot, not a build-pipeline output kept in sync on
@@ -73,7 +81,12 @@
             rel="stylesheet"
             href="{% static 'horilla_theme/assets/css/v1_styles.css' %}?v=7"
         >
-        <link rel="stylesheet" href="{% static 'build/css/pivottable.min.css' %}">
+        {% if not rm_page %}<link rel="stylesheet" href="{% static 'build/css/pivottable.min.css' %}">{% endif %}
+        {% if youth_centre_mode %}
+            {# Centre screens (templates/rm/) share one small design system. #}
+            <link rel="stylesheet" href="{% static 'rm/rm.css' %}?v=3">
+            <script src="{% static 'rm/rm.js' %}?v=3" defer></script>
+        {% endif %}
         {% with theme=theme_obj %}
             <style>
                 /* ── Centralized design tokens ─────────────────────────────────────
@@ -278,9 +291,12 @@
         <!-- Include Sidebar (sidebar.html owns id="sidebar" itself) -->
         {% include "horilla_theme/components/sidebar.html" %}
 
-        <div id="floating-buttons">
-            {% include "floating_button.html" %}
-        </div>
+        {% if not youth_centre_mode %}
+            {# HR quick actions (tickets, assets, reimbursements) have no place at the centre. #}
+            <div id="floating-buttons">
+                {% include "floating_button.html" %}
+            </div>
+        {% endif %}
 
         <!-- Main Content -->
         <div class="oh-main-content h-screen overflow-auto">

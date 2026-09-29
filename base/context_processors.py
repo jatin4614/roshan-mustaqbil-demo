@@ -206,9 +206,18 @@ urlpatterns.append(
 
 def white_labelling_company(request):
     if getattr(settings, "YOUTH_CENTRE_MODE", False):
+        from base.rm import ROLE_LABELS, role_of
+
+        match = getattr(request, "resolver_match", None)
+        role = role_of(getattr(request, "user", None))
         return {
             "white_label_company_name": "Roshan Mustaqbil",
             "white_label_company": None,
+            "youth_centre_mode": True,
+            # Centre screens skip the HR product's heavy scripts.
+            "rm_page": bool(match and getattr(match.func, "__module__", "").startswith("base.rm_")),
+            "rm_role": role,
+            "rm_role_label": ROLE_LABELS.get(role, ""),
         }
     white_labelling = getattr(settings, "WHITE_LABELLING", False)
     if white_labelling:

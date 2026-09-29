@@ -1,0 +1,4 @@
+{# htmx response for the attendance desk: out-of-band swaps only. #}
+{% include "rm/partials/desk_results.html" with oob=True %}
+{% if flash %}{% include "rm/partials/desk_flash.html" with oob=True %}{% endif %}
+{% include "rm/partials/desk_today.html" with oob=True %}

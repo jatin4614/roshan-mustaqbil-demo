@@ -5,7 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from base import announcement
 from base import dashboard as dashboard_module
 from base import ess_dashboard, request_and_approve, views
-from base import rm_views
+from base import rm_access, rm_attendance, rm_import, rm_staff, rm_students, rm_views
 from base.cbv import (
     announcement_cbv,
     company,
@@ -67,18 +67,25 @@ from horilla_audit.models import AuditTag
 
 urlpatterns = [
     path("", views.home, name="home-page"),
+    path("start/", rm_access.rm_home, name="rm-home"),
     path("dashboard/", rm_views.rm_dashboard, name="dashboard"),
-    path("analytics/", lambda request: rm_views.rm_dashboard(request, analytics=True), name="youth-centre-analytics"),
-    path("goals/", lambda request: rm_views.rm_dashboard(request, goals=True), name="youth-centre-goals"),
-    path("students/", rm_views.students, name="rm-students"),
-    path("students/inactive/", lambda request: rm_views.students(request, inactive_only=True), name="rm-inactive-students"),
-    path("students/enroll/", rm_views.enroll_student, name="rm-enroll-student"),
-    path("students/<int:student_id>/", rm_views.student_profile, name="rm-student-profile"),
-    path("students/<int:student_id>/edit/", rm_views.enroll_student, name="rm-edit-student"),
-    path("goals/update/<int:student_id>/", dashboard_module.update_student_goal, name="youth-centre-goal-update"),
+    path("analytics/", rm_views.analytics, name="youth-centre-analytics"),
+    path("goals/", rm_views.career_goals, name="youth-centre-goals"),
+    path("students/", rm_students.students, name="rm-students"),
+    path("students/inactive/", rm_students.students, {"inactive_only": True}, name="rm-inactive-students"),
+    path("students/calls/", rm_students.call_list, name="rm-calls"),
+    path("students/import/", rm_import.import_data, name="rm-import"),
+    path("students/enroll/", rm_students.enroll_student, name="rm-enroll-student"),
+    path("students/<int:student_id>/", rm_students.student_profile, name="rm-student-profile"),
+    path("students/<int:student_id>/edit/", rm_students.enroll_student, name="rm-edit-student"),
+    path("students/follow-ups/<int:followup_id>/delete/", rm_students.delete_followup, name="rm-delete-followup"),
+    path("staff/", rm_staff.staff, name="rm-staff"),
+    path("staff/<int:user_id>/", rm_staff.staff_update, name="rm-staff-update"),
+    # Earlier youth-centre endpoints, still used by the HR student tab.
+    path("goals/update/<int:student_id>/", rm_access.rm_required("coordinator")(dashboard_module.update_student_goal), name="youth-centre-goal-update"),
     path(
         "dashboard/api/youth-centre/",
-        dashboard_module.youth_centre_dashboard_data,
+        rm_access.rm_required("coordinator")(dashboard_module.youth_centre_dashboard_data),
         name="youth-centre-dashboard-data",
     ),
     path(

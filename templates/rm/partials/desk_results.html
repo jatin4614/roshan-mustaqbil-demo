@@ -1,0 +1,60 @@
+<div id="rm-desk-results"{% if oob %} hx-swap-oob="true"{% endif %}>
+    {% if rows %}
+        {% if shared_phone %}
+            <p class="rm-notice" style="margin: 16px 0 0">{{ exact|length }} students share this number. Choose the right one.</p>
+        {% endif %}
+        <ul class="rm-results">
+            {% for row in rows %}
+                <li class="rm-result{% if row.is_exact %} rm-result--exact{% endif %}">
+                    <a class="rm-person" href="{% url 'rm-student-profile' row.student.id %}">
+                        <span class="rm-avatar k-{{ row.goal_key }}">{{ row.initials }}</span>
+                        <span class="rm-person__text">
+                            <span class="rm-person__name">{{ row.student.get_full_name }}</span>
+                            <span class="rm-person__sub">{{ row.student.badge_id }}, {{ row.student.phone }}{% if row.student.rm_profile.career_goal %}, {{ row.student.rm_profile.career_goal }}{% endif %}</span>
+                            {% if row.student.rm_profile.guardian_name or row.student.rm_profile.locality %}<span class="rm-person__sub">{% if row.student.rm_profile.guardian_name %}Guardian {{ row.student.rm_profile.guardian_name }}{% endif %}{% if row.student.rm_profile.guardian_name and row.student.rm_profile.locality %}, {% endif %}{{ row.student.rm_profile.locality }}</span>{% endif %}
+                        </span>
+                    </a>
+                    {% if row.is_present %}
+                        <span class="rm-result__done">
+                            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0z" clip-rule="evenodd"/></svg>
+                            {% if row.present_at %}Present since {{ row.present_at|time:"g:i A" }}{% else %}Present{% endif %}
+                        </span>
+                    {% else %}
+                        <form method="post" action="{% url 'youth-daily-attendance' %}" hx-post="{% url 'youth-daily-attendance' %}" hx-swap="none" hx-disabled-elt="find button">
+                            {% csrf_token %}
+                            <input type="hidden" name="student_id" value="{{ row.student.id }}">
+                            <input type="hidden" name="on" value="{{ day|date:'Y-m-d' }}">
+                            <button class="rm-btn rm-btn--{% if row.is_exact and not shared_phone %}primary{% else %}secondary{% endif %} rm-btn--sm" type="submit">Mark present</button>
+                        </form>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+        {% if more %}<p class="rm-more-hint">Showing {{ rows|length }} of {{ total }} matches. Keep typing to narrow it down.</p>{% endif %}
+    {% elif query %}
+        <div class="rm-empty"><b>No student matches “{{ query }}”.</b>Check the number, or <a class="rm-card__link" href="{% url 'rm-enroll-student' %}?next=desk&amp;q={{ query|urlencode }}">enroll them as a new student</a>.</div>
+    {% elif regulars %}
+        <div class="rm-desk__regulars">
+            <h2 class="rm-card__title">Regulars not in yet</h2>
+            <p class="rm-card__meta">Came at least 3 times in the last two weeks but haven't checked in today</p>
+            <ul class="rm-results">
+                {% for row in regulars %}
+                    <li class="rm-result">
+                        <a class="rm-person" href="{% url 'rm-student-profile' row.student.id %}">
+                            <span class="rm-avatar k-{{ row.goal_key }}">{{ row.initials }}</span>
+                            <span class="rm-person__text">
+                                <span class="rm-person__name">{{ row.student.get_full_name }}</span>
+                                <span class="rm-person__sub">{{ row.student.badge_id }}, {{ row.visits }} visits in two weeks</span>
+                            </span>
+                        </a>
+                        <form method="post" action="{% url 'youth-daily-attendance' %}" hx-post="{% url 'youth-daily-attendance' %}" hx-swap="none" hx-disabled-elt="find button">
+                            {% csrf_token %}
+                            <input type="hidden" name="student_id" value="{{ row.student.id }}">
+                            <button class="rm-btn rm-btn--secondary rm-btn--sm" type="submit">Mark present</button>
+                        </form>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+</div>

@@ -27,16 +27,18 @@ from attendance.views import clock_in_out
 from attendance.views import dashboard as attendance_dashboard
 from attendance.views import geofaceconfig, penalty, requests, search, youth_centre
 from base.forms import AttendanceAllowedIPForm
-from base import rm_views
+from base import rm_attendance, rm_views
 from base.models import AttendanceAllowedIP
 from base.views import add_remove_dynamic_fields
 
 from .views import summary, views
 
 urlpatterns = [
-    path("mark-attendance/", rm_views.quick_attendance, name="youth-daily-attendance"),
-    path("attendance-history/", rm_views.attendance_history, name="youth-attendance-history"),
-    path("attendance-dashboard/", lambda request: rm_views.rm_dashboard(request, attendance_only=True), name="rm-attendance-dashboard"),
+    path("mark-attendance/", rm_attendance.quick_attendance, name="youth-daily-attendance"),
+    path("attendance-history/", rm_attendance.attendance_history, name="youth-attendance-history"),
+    path("attendance-dashboard/", rm_views.attendance_dashboard, name="rm-attendance-dashboard"),
+    path("mark-attendance/undo/", rm_attendance.undo_checkin, name="rm-undo-checkin"),
+    path("visits/<int:record_id>/remove/", rm_attendance.remove_visit, name="rm-remove-visit"),
     path(
         "individual-panalty-list-view/<int:pk>/",
         attendances.PenaltyAccountListView.as_view(),

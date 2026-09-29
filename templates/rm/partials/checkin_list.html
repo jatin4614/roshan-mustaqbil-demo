@@ -1,0 +1,16 @@
+<ul class="rm-list{% if scroll %} rm-list--scroll{% endif %}">
+    {% for checkin in checkins %}
+        <li class="rm-list__item">
+            <a class="rm-person" href="{% url 'rm-student-profile' checkin.student.id %}">
+                <span class="rm-avatar k-{{ checkin.goal_key }}">{{ checkin.initials }}</span>
+                <span class="rm-person__text">
+                    <span class="rm-person__name">{{ checkin.student.get_full_name }}</span>
+                    <span class="rm-person__sub">{{ checkin.student.badge_id }}{% if checkin.goal %}, {{ checkin.goal }}{% endif %}</span>
+                </span>
+            </a>
+            <span class="rm-list__time">{{ checkin.record.attendance_clock_in|time:"g:i A" }}</span>
+        </li>
+    {% empty %}
+        <li class="rm-empty"><b>No one has checked in yet today.</b>Check-ins appear here as students arrive.</li>
+    {% endfor %}
+</ul>

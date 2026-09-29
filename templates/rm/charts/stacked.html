@@ -1,0 +1,18 @@
+{% load l10n %}{% comment %}
+  One 100% bar per row (base.rm_charts.stacked_rows) with a shared legend.
+  Shares are printed inside segments that are wide enough to hold them.
+{% endcomment %}
+<ul class="rm-legend rm-legend--inline" style="margin-bottom: 16px">
+    {% for item in legend %}<li><span class="rm-swatch k-{{ item.key }}"></span>{{ item.label }}</li>{% endfor %}
+</ul>
+<ul class="rm-stack">
+    {% for row in rows %}
+        <li class="rm-stack__row">
+            {% if row.url %}<a class="rm-stack__label" href="{{ row.url }}">{% else %}<span class="rm-stack__label">{% endif %}{% if row.key %}<span class="rm-dot k-{{ row.key }}"></span>{% endif %}{{ row.label }}{% if row.url %}</a>{% else %}</span>{% endif %}
+            <div class="rm-split rm-split--labelled" role="img" aria-label="{{ row.label }}: {% for part in row.parts %}{{ part.label }} {{ part.count }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+                {% for part in row.parts %}<span class="k-{{ part.key }}" style="flex: {{ part.width|unlocalize }} 1 0" data-tip-title="{{ row.label }}: {{ part.label }}" data-tip="{{ part.count }} students, {{ part.share }}">{% if part.show_share %}{{ part.share }}{% endif %}</span>{% empty %}<span class="k-muted" style="flex: 1"></span>{% endfor %}
+            </div>
+            <span class="rm-stack__total">{{ row.total }}</span>
+        </li>
+    {% endfor %}
+</ul>

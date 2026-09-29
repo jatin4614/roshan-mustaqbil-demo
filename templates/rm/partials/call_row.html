@@ -1,0 +1,48 @@
+{% with student=row.student profile=row.profile %}
+<li class="rm-call" id="call-{{ student.id }}">
+    <div class="rm-call__facts">
+        <a class="rm-person" href="{% url 'rm-student-profile' student.id %}">
+            <span class="rm-avatar k-{{ row.goal_key }}">{{ row.initials }}</span>
+            <span class="rm-person__text">
+                <span class="rm-person__name">{{ student.get_full_name }}</span>
+                <span class="rm-person__sub">{{ student.badge_id }}{% if profile.career_goal %}, {{ profile.career_goal }}{% if row.target and row.target != profile.career_goal %} ({{ row.target }}){% endif %}{% endif %}</span>
+            </span>
+        </a>
+        <div class="rm-call__meta">
+            <span>{% if row.last_visit %}Last came {{ row.days_since }} day{{ row.days_since|pluralize }} ago{% else %}Never came; enrolled {{ profile.registration_date|date:"j M Y" }}{% endif %}</span>
+            {% if profile.locality %}<span>{{ profile.locality }}</span>{% endif %}
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px 16px">
+            <a class="rm-tel" href="tel:{{ student.phone }}"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h1.9a1.5 1.5 0 0 1 1.46 1.14l.6 2.42a1.5 1.5 0 0 1-.64 1.6l-1.1.73a10.5 10.5 0 0 0 4.9 4.9l.73-1.1a1.5 1.5 0 0 1 1.6-.64l2.42.6A1.5 1.5 0 0 1 18 13.1V15a1.5 1.5 0 0 1-1.5 1.5h-1C8.1 16.5 3.5 11.9 3.5 4.5V3.5z"/></svg>{{ student.phone }}</a>
+            {% if profile.guardian_phone %}<a class="rm-tel" href="tel:{{ profile.guardian_phone }}"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M2 3.5A1.5 1.5 0 0 1 3.5 2h1.9a1.5 1.5 0 0 1 1.46 1.14l.6 2.42a1.5 1.5 0 0 1-.64 1.6l-1.1.73a10.5 10.5 0 0 0 4.9 4.9l.73-1.1a1.5 1.5 0 0 1 1.6-.64l2.42.6A1.5 1.5 0 0 1 18 13.1V15a1.5 1.5 0 0 1-1.5 1.5h-1C8.1 16.5 3.5 11.9 3.5 4.5V3.5z"/></svg>Guardian{% if profile.guardian_name %} ({{ profile.guardian_name }}){% endif %}</a>{% endif %}
+        </div>
+        {% if row.last_call %}
+            <div class="rm-call__last">Last call {{ row.last_call.called_on|date:"j M" }}: <b>{{ row.last_call.get_result_display }}</b>{% if row.last_call.notes %}. {{ row.last_call.notes }}{% endif %}</div>
+        {% endif %}
+    </div>
+    <form method="post" class="rm-call__form rm-form" hx-post="{{ request.get_full_path }}" hx-target="#call-{{ student.id }}" hx-swap="outerHTML" hx-disabled-elt="find button">
+        {% csrf_token %}
+        <input type="hidden" name="student_id" value="{{ student.id }}">
+        {% with form=row.form %}
+            <div class="rm-field{% if form.result.errors %} rm-field--error{% endif %}">
+                <label for="{{ form.result.id_for_label }}">{{ form.result.label }}</label>
+                {{ form.result }}
+                {% for error in form.result.errors %}<p class="rm-field__error">{{ error }}</p>{% endfor %}
+            </div>
+            <div class="rm-field">
+                <label for="{{ form.next_call_date.id_for_label }}">{{ form.next_call_date.label }} <span class="rm-muted" style="font-weight: 400">(optional)</span></label>
+                {{ form.next_call_date }}
+                {% for error in form.next_call_date.errors %}<p class="rm-field__error">{{ error }}</p>{% endfor %}
+            </div>
+            <div class="rm-field rm-field--wide">
+                <label for="{{ form.notes.id_for_label }}">What did they say?</label>
+                {{ form.notes }}
+            </div>
+            {{ form.called_on.as_hidden }}
+        {% endwith %}
+        <div class="rm-call__actions">
+            <button class="rm-btn rm-btn--primary" type="submit">Save &amp; next</button>
+        </div>
+    </form>
+</li>
+{% endwith %}

@@ -1,0 +1,34 @@
+<div id="rm-desk-flash"{% if oob %} hx-swap-oob="true"{% endif %} data-clear="{% if flash and not flash.undone %}1{% endif %}" aria-live="polite" style="margin-top: 16px{% if not flash %}; display: none{% endif %}">
+    {% if flash.undone %}
+        <div class="rm-flash rm-flash--info rm-flash--pop">
+            <div class="rm-flash__body">
+                <span class="rm-flash__icon"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.7 3.3a1 1 0 0 1 0 1.4L7.4 6H11a6 6 0 1 1-6 6 1 1 0 1 1 2 0 4 4 0 1 0 4-4H7.4l1.3 1.3a1 1 0 1 1-1.4 1.4l-3-3a1 1 0 0 1 0-1.4l3-3a1 1 0 0 1 1.4 0z"/></svg></span>
+                <span>Removed the visit for <b>{{ flash.student.get_full_name }}</b>{% if flash.day != today %} on {{ flash.day|date:"j M" }}{% endif %}.</span>
+            </div>
+            <form method="post" action="{% url 'youth-daily-attendance' %}" hx-post="{% url 'youth-daily-attendance' %}" hx-swap="none" hx-disabled-elt="find button">
+                {% csrf_token %}
+                <input type="hidden" name="student_id" value="{{ flash.student.id }}">
+                <input type="hidden" name="on" value="{{ flash.day|date:'Y-m-d' }}">
+                <button class="rm-btn rm-btn--ghost rm-btn--sm" type="submit">Mark present again</button>
+            </form>
+        </div>
+    {% elif flash %}
+        <div class="rm-flash rm-flash--pop{% if not flash.created %} rm-flash--info{% endif %}">
+            <div class="rm-flash__body">
+                <span class="rm-flash__icon"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0z" clip-rule="evenodd"/></svg></span>
+                <span>
+                    {% if flash.created %}<b>{{ flash.student.get_full_name }}</b> is marked present{% if flash.record.attendance_clock_in %} at {{ flash.record.attendance_clock_in|time:"g:i A" }}{% else %} for {{ flash.record.attendance_date|date:"j M" }}{% endif %}.{% else %}<b>{{ flash.student.get_full_name }}</b> had already checked in{% if flash.record.attendance_clock_in %} at {{ flash.record.attendance_clock_in|time:"g:i A" }}{% endif %}. Nothing changed.{% endif %}
+                    <span class="rm-muted">{{ flash.student.badge_id }}</span>
+                </span>
+            </div>
+            {% if flash.created %}
+                <form method="post" action="{% url 'rm-undo-checkin' %}" hx-post="{% url 'rm-undo-checkin' %}" hx-swap="none" hx-disabled-elt="find button">
+                    {% csrf_token %}
+                    <input type="hidden" name="record_id" value="{{ flash.record.id }}">
+                    <input type="hidden" name="on" value="{{ day|date:'Y-m-d' }}">
+                    <button class="rm-btn rm-btn--ghost rm-btn--sm" type="submit">Undo</button>
+                </form>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>

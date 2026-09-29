@@ -23,6 +23,7 @@
     the same pattern already used below for tourController.js.
 {% endcomment %}
 <script src="{% static 'horilla_theme/assets/js/htmxSelect2.js' %}?v=9"></script>
+{% if not rm_page %}
 <script src="{% static 'build/js/summernote-lite.min.js' %}"></script>
 <script src="{% static '/index/country.js' %}"></script>
 
@@ -44,6 +45,7 @@
 {% if 'attendance'|app_installed %}
     <script src="{% static 'attendance/actions.js' %}"></script>
 {% endif %}
+{% endif %}
 <script type="module" src="{% static 'images/ionicons/ui_icons/ionicons/ionicons.esm.js' %}"></script>
 <script src="{% static '/build/js/sweetAlert.js' %}"></script>
 <script>
@@ -53,10 +55,10 @@
       window.history.replaceState({}, document.title, urlWithoutQuery)
     }
 </script>
-<script src="{% static 'horilla_theme/assets/js/footerScripts.js' %}"></script>
+<script src="{% static 'horilla_theme/assets/js/footerScripts.js' %}?v=2"></script>
 
-<!-- Product tour engine (horilla_tour) -->
-{% if request.user.is_authenticated %}
+<!-- Product tour engine (horilla_tour); the HR tours don't apply to the centre. -->
+{% if request.user.is_authenticated and not youth_centre_mode %}
 <script>
   window.HORILLA_TOUR = {
     page: "{{ request.resolver_match.url_name|default:'' }}",

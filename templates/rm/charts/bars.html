@@ -1,0 +1,20 @@
+{% load l10n %}{% comment %}
+  Horizontal bars. rows: list from base.rm_charts.bars — label, count,
+  share (text), width (% of the longest bar), key (colour), url (drill-down),
+  and optionally compare (a second share shown for contrast).
+{% endcomment %}
+<ul class="rm-bars">
+    {% for row in rows %}
+        <li>
+            {% if row.url %}<a class="rm-bar{% if row.key %} k-{{ row.key }}{% endif %}" href="{{ row.url }}">{% else %}<div class="rm-bar{% if row.key %} k-{{ row.key }}{% endif %}">{% endif %}
+                <div class="rm-bar__top">
+                    <span class="rm-bar__label">{% if dots and row.key %}<span class="rm-dot k-{{ row.key }}"></span>{% endif %}{{ row.label }}</span>
+                    <span class="rm-bar__value">{{ row.count }}<small>{{ row.share }}</small>{% if row.compare %}<small>{{ compare_label|default:"vs" }} {{ row.compare }}</small>{% endif %}</span>
+                </div>
+                <div class="rm-bar__track"><div class="rm-bar__fill" style="width: {{ row.width|unlocalize }}%"></div></div>
+            {% if row.url %}</a>{% else %}</div>{% endif %}
+        </li>
+    {% empty %}
+        <li class="rm-empty">{{ empty|default:"Nothing recorded yet." }}</li>
+    {% endfor %}
+</ul>

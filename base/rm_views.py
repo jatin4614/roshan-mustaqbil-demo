@@ -1,209 +1,422 @@
-"""RM-only screens.  They deliberately avoid the generic HR employee UX."""
+"""Roshan Mustaqbil dashboards: the centre overview, attendance patterns,
+career goals and analytics. Student, attendance-desk, staff and import
+screens live in base.rm_students, base.rm_attendance, base.rm_staff and
+base.rm_import.
+"""
 
 from collections import Counter, defaultdict
-from datetime import date, timedelta
+from datetime import timedelta
 
-from django import forms
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.db.models import Q
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.db.models import Count
+from django.shortcuts import render
+from django.urls import reverse
 from django.utils import timezone
 
-from attendance.models import Attendance
+from base import rm_charts as charts
 from base.rm import (
-    AGE_BUCKETS, ENGAGEMENT_STATUSES, age_group, engagement_for_students,
-    goal_label, mark_student_present, requirement_counts, student_queryset,
+    ACTIVE_DAYS, AGE_BUCKETS, ALL_STATUSES, ENGAGEMENT_HELP, ENGAGEMENT_KEYS, ENGAGEMENT_LABELS,
+    ENGAGEMENT_STATUSES, GOAL_KEYS, GOAL_ORDER, MOVED_ON, NO_STATUS, NO_VALUE, NOT_RECORDED,
+    QUALIFICATIONS, first_visits, needs_call, rm_visits,
 )
-from employee.models import Employee, StudentProfile
+from base.rm_access import rm_required
+from base.rm_common import (
+    OUTCOME_LABELS, PREP_LABELS, PURPOSE_LABELS, STATUS_LABELS, age_label, checkin_rows,
+    day_checkins, goal_url, is_open, status_url, student_values, students_url, today_label,
+    typical_by_now, visits_per_day,
+)
+from employee.models import StudentFollowUp, StudentProfile
+
+NOT_CONTACTED = "Not contacted yet"
+# What happened to students who stopped coming: action first, then what
+# they told us, then the students who have moved on for good.
+AFTERMATH = (
+    (NOT_CONTACTED, "call"),
+    ("Unable to Contact", "muted"), ("Wrong Number", "muted"),
+    ("Plans to Return", "neutral"), ("Preparing from Home", "neutral"), ("Studying at School / College", "neutral"),
+    ("Preparing at Another Institute", "neutral"), ("Employed", "neutral"), ("Other", "neutral"),
+    ("Selected", "good"), ("Joined Professional Course", "good"), ("Moved Away", "lost"), ("Closed", "lost"),
+)
 
 
-class StudentRegistrationForm(forms.Form):
-    registration_number = forms.CharField(max_length=50, required=False)
-    full_name = forms.CharField(max_length=200)
-    phone = forms.CharField(max_length=25)
-    email = forms.EmailField(required=False)
-    dob = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
-    gender = forms.ChoiceField(choices=(("", "Select gender"), *Employee.choice_gender), required=False)
-    address = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}))
-    qualification = forms.CharField(required=False)
-    institution = forms.CharField(required=False)
-    registration_date = forms.DateField(required=False, initial=date.today, widget=forms.DateInput(attrs={"type": "date"}))
-    purpose_of_rm = forms.ChoiceField(choices=(("", "Select purpose"), *StudentProfile.PURPOSES), required=False)
-    purpose_other = forms.CharField(required=False)
-    career_goal = forms.ChoiceField(choices=(("", "Select career goal"), *StudentProfile.CAREER_GOALS), required=False)
-    defence_entry = forms.ChoiceField(choices=(("", "Not applicable"), *StudentProfile.DEFENCE_ENTRIES), required=False)
-    expectations = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}))
-    requirements = forms.MultipleChoiceField(required=False, choices=[(item, item) for item in StudentProfile.REQUIREMENT_CHOICES], widget=forms.CheckboxSelectMultiple)
-    requirements_other = forms.CharField(required=False)
-    guardian_name = forms.CharField(required=False)
-    guardian_phone = forms.CharField(required=False)
-    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}))
-
-    def clean(self):
-        values = super().clean()
-        if values.get("career_goal") == "Defence" and not values.get("defence_entry"):
-            self.add_error("defence_entry", "Choose the Defence entry scheme.")
-        return values
+def _engagement_block(rows, include_moved=True):
+    counts = Counter(row["status"] for row in rows)
+    current = sum(counts[status] for status in ENGAGEMENT_STATUSES)
+    block = []
+    for status in (ALL_STATUSES if include_moved else ENGAGEMENT_STATUSES):
+        denominator = len(rows) if status == MOVED_ON else current
+        block.append({
+            "status": status, "label": ENGAGEMENT_LABELS[status], "key": ENGAGEMENT_KEYS[status], "count": counts[status],
+            "share": charts.share_label(counts[status], denominator), "help": ENGAGEMENT_HELP[status], "url": status_url(status),
+        })
+    return block
 
 
-class FollowUpForm(forms.ModelForm):
-    class Meta:
-        model = StudentProfile
-        fields = ("current_status", "inactivity_reason", "last_followup_date", "followup_notes")
-        widgets = {"last_followup_date": forms.DateInput(attrs={"type": "date"}), "inactivity_reason": forms.Textarea(attrs={"rows": 2}), "followup_notes": forms.Textarea(attrs={"rows": 3})}
+def _active_trend(today, weeks=26):
+    """Students active (visited in the previous 30 days) at each week's end."""
+    start = today - timedelta(days=7 * (weeks - 1) + ACTIVE_DAYS - 1)
+    by_day = defaultdict(set)
+    for student, day in rm_visits().filter(attendance_date__range=(start, today)).values_list("employee_id", "attendance_date"):
+        by_day[day].add(student)
+    points = []
+    for weeks_back in range(weeks - 1, -1, -1):
+        end = today - timedelta(weeks=weeks_back)
+        seen = set()
+        for offset in range(ACTIVE_DAYS):
+            seen |= by_day.get(end - timedelta(days=offset), set())
+        first_of_month = end.day <= 7
+        points.append({
+            "label": end.strftime("%b") if first_of_month and weeks_back else ("Now" if not weeks_back else ""),
+            "tip": "Today" if not weeks_back else f"Week ending {end.strftime('%a %d %b').replace(' 0', ' ')}",
+            "value": len(seen),
+        })
+    return points
 
 
-def _admin_required(request):
-    return request.user.is_superuser or request.user.has_perm("employee.view_employee")
+def _distinct_visitors(start, end):
+    return rm_visits().filter(attendance_date__range=(start, end)).values("employee_id").distinct().count()
 
 
-def _student_rows(request):
-    students = list(student_queryset().order_by("employee_first_name", "employee_last_name"))
-    query = request.GET.get("q", "").strip()
-    if query:
-        students = [student for student in students if query.lower() in (student.badge_id or "").lower() or query.lower() in (student.phone or "").lower() or query.lower() in student.get_full_name().lower()]
-    rows = engagement_for_students(students)
-    filters = {
-        "engagement": request.GET.get("engagement", ""), "goal": request.GET.get("goal", ""),
-        "gender": request.GET.get("gender", ""), "purpose": request.GET.get("purpose", ""),
-        "age": request.GET.get("age", ""), "defence_entry": request.GET.get("defence_entry", ""),
-        "current_status": request.GET.get("current_status", ""),
-    }
-    filtered = []
+def regulars_missing(today, rows_by_id=None):
+    """Early warning: came at least 3 times in the three weeks before last
+    week, then not at all in the last 7 days, and nobody has called yet."""
+    earlier = Counter(rm_visits().filter(attendance_date__range=(today - timedelta(days=27), today - timedelta(days=7))).values_list("employee_id", flat=True))
+    recent = set(rm_visits().filter(attendance_date__range=(today - timedelta(days=6), today)).values_list("employee_id", flat=True))
+    called = set(StudentFollowUp.objects.filter(called_on__gte=today - timedelta(days=6)).values_list("student__employee_id", flat=True))
+    missing = [(student, visits) for student, visits in earlier.items() if visits >= 3 and student not in recent and student not in called]
+    if rows_by_id is not None:
+        missing = [(student, visits) for student, visits in missing if student in rows_by_id and rows_by_id[student]["status"] == "Active"]
+    return sorted(missing, key=lambda item: -item[1])
+
+
+def aftermath_bars(rows):
+    """What happened to students who stopped coming (or never came)."""
+    counts = Counter()
     for row in rows:
-        student, profile = row["student"], row["student"].rm_profile
-        if filters["engagement"] and row["status"] != filters["engagement"]: continue
-        if filters["goal"] and profile.career_goal != filters["goal"]: continue
-        if filters["gender"] and student.gender != filters["gender"]: continue
-        if filters["purpose"] and profile.purpose_of_rm != filters["purpose"]: continue
-        if filters["age"] and age_group(student) != filters["age"]: continue
-        if filters["defence_entry"] and profile.defence_entry != filters["defence_entry"]: continue
-        if filters["current_status"] and profile.current_status != filters["current_status"]: continue
-        row["age_group"] = age_group(student)
-        filtered.append(row)
-    return filtered, filters
+        if row["status"] == MOVED_ON:
+            counts[row["outcome"]] += 1
+        elif row["status"] in {"Inactive", "Never Attended"}:
+            stale = row["last_followup_date"] and row["last_visit"] and row["last_followup_date"] < row["last_visit"]
+            counts[NOT_CONTACTED if not row["current_status"] or stale else row["current_status"]] += 1
+    total = sum(counts.values())
+    labels = {**STATUS_LABELS, **OUTCOME_LABELS, "Selected": "Selected (armed forces / service)", NOT_CONTACTED: NOT_CONTACTED}
+    inactive_url = reverse("rm-inactive-students")
+
+    def link(bucket):
+        if bucket == NOT_CONTACTED:
+            return f"{inactive_url}?current_status={NO_STATUS}"
+        if bucket in OUTCOME_LABELS:
+            return students_url(engagement=MOVED_ON, outcome=bucket)
+        return f"{inactive_url}?current_status={bucket}"
+
+    order = [bucket for bucket, _ in AFTERMATH]
+    keys = dict(AFTERMATH)
+    return charts.bars({bucket: count for bucket, count in counts.items() if count}, total=total, order=order, keys=keys, url=link, labels=labels), total
 
 
-@login_required
-def students(request, inactive_only=False):
-    if not _admin_required(request): return redirect("dashboard")
-    rows, filters = _student_rows(request)
-    if inactive_only:
-        rows = [row for row in rows if row["status"] in {"Inactive", "Never Attended"}]
-    return render(request, "rm/students.html", {"rows": rows, "filters": filters, "inactive_only": inactive_only, "goals": StudentProfile.CAREER_GOALS, "purposes": StudentProfile.PURPOSES, "statuses": StudentProfile.CURRENT_STATUSES, "age_groups": [label for _, label in AGE_BUCKETS]})
-
-
-@login_required
-def enroll_student(request, student_id=None):
-    student = get_object_or_404(student_queryset(), id=student_id) if student_id else None
-    profile = student.rm_profile if student else None
-    initial = {}
-    if student:
-        initial = {"registration_number": student.badge_id, "full_name": student.get_full_name(), "phone": student.phone, "email": student.email if "@rm.local" not in student.email else "", "dob": student.dob, "gender": student.gender, "address": student.address, "qualification": student.qualification}
-        for field in StudentRegistrationForm.base_fields:
-            if profile and hasattr(profile, field): initial[field] = getattr(profile, field)
-    form = StudentRegistrationForm(request.POST or None, initial=initial)
-    if request.method == "POST" and form.is_valid():
-        values = form.cleaned_data
-        names = values["full_name"].strip().split(maxsplit=1)
-        registration = values["registration_number"].strip() or f"RM-{StudentProfile.objects.count()+1:04d}"
-        email = values["email"] or f"{registration.lower().replace(' ', '-') }@rm.local"
-        if not student:
-            if Employee.objects.filter(badge_id=registration).exists(): form.add_error("registration_number", "This registration number already exists.")
-            elif Employee.objects.filter(email=email).exists(): form.add_error("email", "This email is already registered.")
-            else: student = Employee()
-        if student and not form.errors:
-            student.badge_id, student.employee_first_name = registration, names[0]
-            student.employee_last_name = names[1] if len(names) > 1 else ""
-            student.phone, student.email, student.dob = values["phone"], email, values["dob"]
-            student.gender, student.address, student.qualification = values["gender"] or "male", values["address"], values["qualification"]
-            student.is_active = True
-            student.save()
-            profile, _ = StudentProfile.objects.get_or_create(employee=student)
-            for field in ("purpose_of_rm", "purpose_other", "career_goal", "expectations", "requirements", "requirements_other", "registration_date", "institution", "guardian_name", "guardian_phone", "notes"):
-                setattr(profile, field, values.get(field) or ([] if field == "requirements" else ""))
-            profile.defence_entry = values["defence_entry"] if values.get("career_goal") == "Defence" else ""
-            profile.save()
-            messages.success(request, "Student registration saved.")
-            return redirect("rm-student-profile", student_id=student.id)
-    return render(request, "rm/enroll.html", {"form": form, "student": student})
-
-
-@login_required
-def quick_attendance(request):
+@rm_required("frontdesk")
+def rm_dashboard(request):
     today = timezone.localdate()
-    query = request.GET.get("q", "").strip()
-    result = None
-    matches = []
-    if query:
-        exact = student_queryset().filter(Q(badge_id__iexact=query) | Q(phone__iexact=query)).first()
-        if exact: result = exact
-        else:
-            matches = list(student_queryset().filter(Q(employee_first_name__icontains=query) | Q(employee_last_name__icontains=query) | Q(badge_id__icontains=query) | Q(phone__icontains=query)).order_by("employee_first_name")[:8])
-    if request.method == "POST":
-        student = get_object_or_404(student_queryset(), id=request.POST.get("student_id"))
-        record, created = mark_student_present(student, actor=request.user)
-        payload = {"created": created, "student": student.get_full_name(), "registration": student.badge_id, "time": timezone.localtime().strftime("%I:%M %p")}
-        if request.headers.get("x-requested-with") == "XMLHttpRequest": return JsonResponse(payload)
-        messages.success(request, f"Attendance {'marked' if created else 'already marked'} for {student.get_full_name()}.")
-        return redirect("youth-daily-attendance")
-    recent = Attendance.objects.filter(employee_id__rm_profile__isnull=False, attendance_date=today).select_related("employee_id").order_by("-attendance_clock_in")[:12]
-    return render(request, "rm/quick_attendance.html", {"query": query, "result": result, "matches": matches, "recent": recent, "today_count": Attendance.objects.filter(employee_id__rm_profile__isnull=False, attendance_date=today).count()})
+    rows = student_values(today)
+    rows_by_id = {row["id"]: row for row in rows}
+    current = [row for row in rows if row["status"] != MOVED_ON]
+    engagement = _engagement_block(rows)
+    active = engagement[0]["count"]
+    active_then = _distinct_visitors(today - timedelta(days=2 * ACTIVE_DAYS - 1), today - timedelta(days=ACTIVE_DAYS))
+
+    # Present today, compared with a typical day at this time.
+    today_count = rm_visits().filter(attendance_date=today).count()
+    typical = typical_by_now(today)
+
+    # How often active students come.
+    per_student = Counter(rm_visits().filter(attendance_date__range=(today - timedelta(days=ACTIVE_DAYS - 1), today)).values_list("employee_id", flat=True))
+    rare = sum(1 for visits in per_student.values() if visits <= 2)
+
+    month_start = today.replace(day=1)
+    last_month_start = (month_start - timedelta(days=1)).replace(day=1)
+    enrolled_month = [row for row in rows if row["registration_date"] and row["registration_date"] >= month_start]
+    enrolled_last_month = sum(1 for row in rows if row["registration_date"] and last_month_start <= row["registration_date"] < month_start)
+
+    due = [row for row in current if needs_call(row["status"], row["last_visit"], row, today)]
+    due_by_status = Counter(row["status"] for row in due)
+    missing = regulars_missing(today, rows_by_id)
+    calls_week = StudentFollowUp.objects.filter(called_on__gte=today - timedelta(days=6)).count()
+    moved = Counter(row["outcome"] for row in rows if row["status"] == MOVED_ON)
+    aftermath, aftermath_total = aftermath_bars(rows)
+
+    context = {
+        "today": today, "today_label": today_label(today), "total": len(rows), "current_total": len(current),
+        "active": active, "active_change": active - active_then, "engagement": engagement,
+        "moved": {"total": sum(moved.values()), "selected": moved.get("Selected", 0)},
+        "trend": charts.line(_active_trend(today)),
+        "kpis": {
+            "today": today_count, "typical": typical,
+            "median_visits": charts.median(per_student.values()), "rare": rare, "active_visitors": len(per_student),
+            "enrolled_month": len(enrolled_month), "enrolled_month_came": sum(1 for row in enrolled_month if row["last_visit"]),
+            "enrolled_last_month": enrolled_last_month,
+            "due": len(due), "due_dormant": due_by_status["Dormant"],
+        },
+        "queues": [
+            {"label": "Regulars who missed this week", "help": "Came 3+ times in the weeks before, not in the last 7 days", "count": len(missing), "url": reverse("rm-calls") + "?queue=missing"},
+            {"label": "Slipping away", "help": ENGAGEMENT_HELP["Dormant"], "count": due_by_status["Dormant"], "url": reverse("rm-calls") + "?queue=Dormant"},
+            {"label": "Inactive", "help": ENGAGEMENT_HELP["Inactive"], "count": due_by_status["Inactive"], "url": reverse("rm-calls") + "?queue=Inactive"},
+            {"label": "Never came", "help": ENGAGEMENT_HELP["Never Attended"], "count": due_by_status["Never Attended"], "url": reverse("rm-calls") + "?queue=Never+Attended"},
+        ],
+        "calls_week": calls_week,
+        "checkins": checkin_rows(day_checkins(today, 6)),
+        "goals": charts.bars(Counter(row["goal"] for row in current), total=len(current), order=GOAL_ORDER + (NOT_RECORDED,), keys={**GOAL_KEYS, NOT_RECORDED: "muted"}, url=goal_url),
+        "aftermath": aftermath, "aftermath_total": aftermath_total,
+    }
+    return render(request, "rm/dashboard.html", context)
 
 
-@login_required
-def attendance_history(request):
-    records = Attendance.objects.filter(employee_id__rm_profile__isnull=False).select_related("employee_id", "employee_id__rm_profile").order_by("-attendance_date", "-attendance_clock_in")
-    query = request.GET.get("q", "").strip()
-    if query: records = records.filter(Q(employee_id__badge_id__icontains=query) | Q(employee_id__phone__icontains=query) | Q(employee_id__employee_first_name__icontains=query) | Q(employee_id__employee_last_name__icontains=query))
-    if request.GET.get("goal"): records = records.filter(employee_id__rm_profile__career_goal=request.GET["goal"])
-    if request.GET.get("date"): records = records.filter(attendance_date=request.GET["date"])
-    if request.GET.get("range"):
-        records = records.filter(attendance_date__gte=timezone.localdate() - timedelta(days=int(request.GET["range"])))
-    return render(request, "rm/attendance_history.html", {"records": records[:500], "goals": StudentProfile.CAREER_GOALS})
-
-
-@login_required
-def student_profile(request, student_id):
-    student = get_object_or_404(student_queryset(), id=student_id)
-    visits = Attendance.objects.filter(employee_id=student).order_by("-attendance_date", "-attendance_clock_in")
-    engagement = engagement_for_students([student])[0]
-    followup = FollowUpForm(request.POST or None, instance=student.rm_profile)
-    if request.method == "POST" and followup.is_valid():
-        followup.save(); messages.success(request, "Follow-up details saved."); return redirect("rm-student-profile", student_id=student.id)
-    month_start = timezone.localdate().replace(day=1)
-    return render(request, "rm/student_profile.html", {"student": student, "profile": student.rm_profile, "engagement": engagement, "visits": visits[:20], "total_visits": visits.count(), "month_visits": visits.filter(attendance_date__gte=month_start).count(), "followup": followup})
-
-
-def _charts(students, engagement_rows):
-    def groups(items):
-        values = Counter(items)
-        maximum = max(values.values(), default=1)
-        return [
-            {"label": key or "Not recorded", "count": value, "percent": round(value / maximum * 100)}
-            for key, value in values.most_common()
-        ]
-    return {"goals": groups(student.rm_profile.career_goal for student in students), "gender": groups(student.gender for student in students), "age": groups(age_group(student) for student in students), "purpose": groups(student.rm_profile.purpose_of_rm for student in students), "requirements": groups(requirement_counts(students).elements()), "engagement": groups(row["status"] for row in engagement_rows), "inactive_status": groups(row["student"].rm_profile.current_status for row in engagement_rows if row["status"] in {"Inactive", "Never Attended"})}
-
-
-@login_required
-def rm_dashboard(request, attendance_only=False, analytics=False, goals=False):
-    students = list(student_queryset())
-    engagement_rows = engagement_for_students(students)
+@rm_required("coordinator")
+def attendance_dashboard(request):
     today = timezone.localdate()
-    visits = Attendance.objects.filter(employee_id__rm_profile__isnull=False)
-    today_visits = visits.filter(attendance_date=today)
-    last_30 = visits.filter(attendance_date__gte=today-timedelta(days=29))
-    trend = []
-    for offset in range(29, -1, -1):
-        day = today - timedelta(days=offset)
-        trend.append({"label": day.strftime("%d %b"), "count": visits.filter(attendance_date=day).count()})
-    peak = max((item["count"] for item in trend), default=1)
-    for item in trend:
-        item["percent"] = round(item["count"] / peak * 100) if peak else 0
-    engagement_counts = Counter(row["status"] for row in engagement_rows)
-    context = {"students": students, "engagement_rows": engagement_rows, "charts": _charts(students, engagement_rows), "trend": trend, "recent": today_visits.select_related("employee_id").order_by("-attendance_clock_in")[:10], "kpis": {"registered": len(students), "active": engagement_counts["Active"], "dormant": engagement_counts["Dormant"], "inactive": engagement_counts["Inactive"] + engagement_counts["Never Attended"], "never": engagement_counts["Never Attended"], "today": today_visits.count(), "week": visits.filter(attendance_date__gte=today-timedelta(days=6)).values("employee_id").distinct().count(), "month": last_30.values("employee_id").distinct().count(), "average_daily": round(last_30.count()/30, 1), "new_month": StudentProfile.objects.filter(registration_date__year=today.year, registration_date__month=today.month).count()}}
-    template = "rm/analytics.html" if analytics else "rm/career_goals.html" if goals else "rm/attendance_dashboard.html" if attendance_only else "rm/dashboard.html"
-    return render(request, template, context)
+    days = int(request.GET.get("days", 30)) if request.GET.get("days") in {"30", "60", "90"} else 30
+    start = today - timedelta(days=days - 1)
+    per_day = visits_per_day(start, today)
+    open_days = [day for day, count in per_day.items() if is_open(count) and day != today]
+    average = round(sum(per_day[day] for day in open_days) / len(open_days), 1) if open_days else 0
+    step = 7 if days > 45 else 5
+    points = []
+    for offset in range(days):
+        day = start + timedelta(days=offset)
+        edge = offset == 0 or offset == days - 1 or (days - 1 - offset) % step == 0
+        count = per_day.get(day, 0)
+        points.append({
+            "label": day.strftime("%d %b").lstrip("0") if edge else "",
+            "tip": ("Today, so far: " if day == today else "") + day.strftime("%a %d %b").replace(" 0", " "),
+            "value": count, "closed": not is_open(count) and day != today,
+        })
+    visits = rm_visits().filter(attendance_date__range=(start, today))
+    week = rm_visits().filter(attendance_date__range=(today - timedelta(days=6), today))
+    week_students = set(week.values_list("employee_id", flat=True))
+    firsts = first_visits(week_students)
+    new_this_week = sum(1 for day in firsts.values() if day >= today - timedelta(days=6))
+
+    weekday_totals, weekday_days = Counter(), Counter()
+    for day in open_days:
+        weekday_totals[day.weekday()] += per_day[day]
+        weekday_days[day.weekday()] += 1
+    names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    full_names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    weekday_points = [
+        {"label": name, "tip": f"Average {full}", "value": round(weekday_totals[index] / weekday_days[index], 1) if weekday_days[index] else 0}
+        for index, (name, full) in enumerate(zip(names, full_names))
+    ]
+    hours = Counter(time.hour for time in visits.filter(attendance_date__in=open_days).values_list("attendance_clock_in", flat=True) if time)
+    first, last = min(list(hours) + [9]), max(list(hours) + [17])
+
+    def hour_label(hour):
+        return f"{hour % 12 or 12} {'am' if hour < 12 else 'pm'}"
+
+    hour_points = [
+        {"label": hour_label(hour) if (hour - first) % 2 == 0 else "", "tip": f"{hour_label(hour)} to {hour_label(hour + 1)}",
+         "value": round(hours.get(hour, 0) / len(open_days), 1) if open_days else 0}
+        for hour in range(first, last + 1)
+    ]
+    per_student = Counter(visits.values_list("employee_id", flat=True))
+    regulars = (
+        visits.values("employee_id", "employee_id__employee_first_name", "employee_id__employee_last_name", "employee_id__badge_id", "employee_id__rm_profile__career_goal")
+        .annotate(total=Count("id")).order_by("-total", "employee_id__employee_first_name")[:8]
+    )
+    regular_rows = [
+        {
+            "id": row["employee_id"], "name": f"{row['employee_id__employee_first_name']} {row['employee_id__employee_last_name'] or ''}".strip(),
+            "badge": row["employee_id__badge_id"], "total": row["total"], "goal_key": GOAL_KEYS.get(row["employee_id__rm_profile__career_goal"], "none"),
+            "initials": ((row["employee_id__employee_first_name"] or "")[:1] + (row["employee_id__employee_last_name"] or "")[:1]).upper(),
+            "width": min(100, round(row["total"] / max(len(open_days) + 1, 1) * 100)),
+        }
+        for row in regulars
+    ]
+    # Visits per active student for each goal: which groups use the centre
+    # most, independent of how many students each goal has.
+    goal_of = dict(visits.values_list("employee_id", "employee_id__rm_profile__career_goal").distinct())
+    goal_visits, goal_students = Counter(), Counter()
+    for student, count in per_student.items():
+        goal = goal_of.get(student) or NOT_RECORDED
+        goal_visits[goal] += count
+        goal_students[goal] += 1
+    intensity = {goal: round(goal_visits[goal] / goal_students[goal], 1) for goal in goal_students}
+    peak = max(intensity.values(), default=0)
+    goal_rows = [
+        {"label": goal, "count": intensity[goal], "share": f"{goal_students[goal]} students", "width": round(intensity[goal] / peak * 100) if peak else 0,
+         "key": GOAL_KEYS.get(goal, "muted"), "url": goal_url(goal)}
+        for goal in GOAL_ORDER + (NOT_RECORDED,) if goal in intensity
+    ]
+    context = {
+        "today": today, "today_label": today_label(today), "days": days, "ranges": (30, 60, 90),
+        "kpis": {
+            "today": per_day.get(today, 0), "typical": typical_by_now(today),
+            "week_unique": len(week_students), "new_this_week": new_this_week,
+            "range_unique": len(per_student), "range_visits": visits.count(), "open_days": len(open_days),
+            "median": charts.median(per_student.values()),
+        },
+        "daily": charts.columns(points, highlight_last=True, average=average),
+        "weekday": charts.columns(weekday_points, unit="visit"),
+        "hours": charts.columns(hour_points, unit="check-in"),
+        "checkins": checkin_rows(day_checkins(today)),
+        "regulars": regular_rows,
+        "goal_intensity": goal_rows,
+    }
+    return render(request, "rm/attendance_dashboard.html", context)
+
+
+@rm_required("coordinator")
+def career_goals(request):
+    today = timezone.localdate()
+    rows = [row for row in student_values(today) if row["status"] != MOVED_ON]
+    total = len(rows)
+    by_goal = defaultdict(list)
+    for row in rows:
+        by_goal[row["goal"]].append(row)
+    goals = [goal for goal in GOAL_ORDER + (NOT_RECORDED,) if goal in by_goal or goal != NOT_RECORDED]
+    cards = []
+    for goal in goals:
+        members = by_goal.get(goal, [])
+        statuses = Counter(row["status"] for row in members)
+        cards.append({
+            "label": goal, "key": GOAL_KEYS.get(goal, "muted"), "count": len(members), "share": charts.share_label(len(members), total),
+            "active": statuses["Active"], "active_rate": charts.share_label(statuses["Active"], len(members)), "url": goal_url(goal),
+            "split": charts.stacked_rows([(goal, statuses, "")], ENGAGEMENT_STATUSES, ENGAGEMENT_KEYS, ENGAGEMENT_LABELS)[0],
+        })
+    defence = [row for row in rows if row["career_goal"] == "Defence"]
+    entries = Counter(row["defence_entry"] or NOT_RECORDED for row in defence)
+    exams = Counter()
+    for row in rows:
+        if row["career_goal"] in {"UPSC / Civil Services", "Other"}:
+            exams[(row["target_exam"] if row["target_exam"] != "Other" else "") or ("Other: " + row["goal_detail"][:28] if row["goal_detail"] else NOT_RECORDED)] += 1
+    exam_total = sum(exams.values())
+    exams = charts.fold_tail(exams, 12, other="Other exams")
+
+    def target_link(label):
+        if label in {"Other exams", NOT_RECORDED} or label.startswith("Other:"):
+            return ""
+        return students_url(target=label)
+
+    stage_order = [value for value, _ in StudentProfile.PREP_STAGES] + [NOT_RECORDED]
+    stage_keys = {value: f"age-{index}" for index, value in enumerate(stage_order[:-1])}
+    stage_keys[NOT_RECORDED] = "age-6"
+    stages_by_goal = [
+        (goal, Counter(row["prep_stage"] or NOT_RECORDED for row in by_goal.get(goal, [])), goal_url(goal), GOAL_KEYS.get(goal, "muted"))
+        for goal in goals if by_goal.get(goal)
+    ]
+    stages_present = {stage for _, counter, _, _ in stages_by_goal for stage in counter}
+    years = Counter(row["target_year"] for row in rows if row["target_year"] and row["target_year"] >= today.year)
+    year_points = [{"label": str(year), "tip": f"Exam in {year}", "value": years[year]} for year in sorted(years)[:5]]
+    context = {
+        "today_label": today_label(today), "total": total, "cards": cards,
+        "engagement_legend": [{"label": ENGAGEMENT_LABELS[status], "key": ENGAGEMENT_KEYS[status]} for status in ENGAGEMENT_STATUSES],
+        "entries": charts.bars(entries, total=len(defence), keys={NOT_RECORDED: "muted"}, url=target_link),
+        "defence_total": len(defence),
+        "exams": charts.bars(exams, total=exam_total, keys={"Other exams": "muted", NOT_RECORDED: "muted"}, url=target_link),
+        "exam_total": exam_total,
+        "stages": charts.stacked_rows(stages_by_goal, stage_order, stage_keys, PREP_LABELS),
+        "stage_legend": [{"label": PREP_LABELS.get(stage, stage), "key": stage_keys[stage]} for stage in stage_order if stage in stages_present],
+        "years": charts.columns(year_points, unit="student") if year_points else None,
+        "no_year": sum(1 for row in rows if not row["target_year"]),
+    }
+    return render(request, "rm/career_goals.html", context)
+
+
+KEPT_COMING = ("Came only once", "Less than a month", "1–3 months", "3–6 months", "6 months or more")
+
+
+def _kept_coming(first, last):
+    if first == last:
+        return KEPT_COMING[0]
+    days = (last - first).days
+    return KEPT_COMING[1] if days < 30 else KEPT_COMING[2] if days < 91 else KEPT_COMING[3] if days < 182 else KEPT_COMING[4]
+
+
+@rm_required("coordinator")
+def analytics(request):
+    today = timezone.localdate()
+    all_rows = student_values(today)
+    goal = request.GET.get("goal", "")
+    scope = "all" if request.GET.get("who") == "all" else "active"
+    goal_rows = [row for row in all_rows if row["goal"] == goal] if goal in GOAL_KEYS else all_rows
+    rows = [row for row in goal_rows if row["status"] == "Active"] if scope == "active" else goal_rows
+    total = len(rows)
+    firsts = first_visits()
+
+    # Enrollment each month, split by whether the student ever came.
+    months, cursor = [], today.replace(day=1)
+    for _ in range(12):
+        months.append(cursor)
+        cursor = (cursor - timedelta(days=1)).replace(day=1)
+    months.reverse()
+    came, not_yet = Counter(), Counter()
+    for row in goal_rows:
+        registered = row["registration_date"]
+        if registered and registered >= months[0]:
+            (came if row["id"] in firsts else not_yet)[(registered.year, registered.month)] += 1
+    enrollment_points = [
+        {"label": month.strftime("%b") if month.month != 1 else month.strftime("%b %y"), "tip": month.strftime("%B %Y"),
+         "parts": {"came": came[(month.year, month.month)], "not_yet": not_yet[(month.year, month.month)]}}
+        for month in months
+    ]
+    recent = [row for row in goal_rows if row["registration_date"] and months[0] <= row["registration_date"] <= today - timedelta(days=30)]
+    within_week = sum(1 for row in recent if row["id"] in firsts and (firsts[row["id"]] - row["registration_date"]).days <= 7)
+    never = sum(1 for row in recent if row["id"] not in firsts)
+
+    stopped = [row for row in goal_rows if row["status"] == "Inactive" and row["id"] in firsts and row["last_visit"]]
+    kept = Counter(_kept_coming(firsts[row["id"]], row["last_visit"]) for row in stopped)
+    early = kept[KEPT_COMING[0]] + kept[KEPT_COMING[1]]
+
+    age_labels = [label for _, label in AGE_BUCKETS]
+    ages = Counter(age_label(row["dob"], today) for row in rows)
+    status_filter = "Active" if scope == "active" else ""
+    age_points = [
+        {"label": label, "tip": f"Age {label}", "value": ages.get(label, 0), "url": students_url(age=label, engagement=status_filter, goal=goal)}
+        for label in age_labels if ages.get(label, 0) or label not in {"Below 15", "Above 30"}
+    ]
+    requirement_counts = Counter(item for row in rows for item in (row["requirements"] or []))
+    lapsed_rows = [row for row in goal_rows if row["status"] in {"Inactive", "Never Attended"}]
+    lapsed_needs = Counter(item for row in lapsed_rows for item in (row["requirements"] or []))
+    needs = charts.bars(requirement_counts, total=total, url=lambda item: students_url(requirement=item, engagement=status_filter, goal=goal))
+    for bar in needs:
+        bar["compare"] = charts.share_label(lapsed_needs.get(bar["label"], 0), len(lapsed_rows)) if scope == "active" and lapsed_rows else ""
+    qualification = Counter(
+        row["qualification"] if row["qualification"] in QUALIFICATIONS else (NOT_RECORDED if not row["qualification"] else "Other")
+        for row in rows
+    )
+    missing = {
+        "dob": sum(1 for row in all_rows if not row["dob"]), "goal": sum(1 for row in all_rows if not row["career_goal"]),
+        "locality": sum(1 for row in all_rows if not row["locality"]),
+        "phone": sum(count for count in Counter(row["phone"] for row in all_rows if row["phone"]).values() if count > 1),
+    }
+    expectations = [row for row in sorted(rows, key=lambda row: row["registration_date"] or today, reverse=True) if (row["expectations"] or "").strip()][:10]
+    context = {
+        "today_label": today_label(today), "total": total, "goal": goal, "scope": scope,
+        "goal_filters": [("", "All goals")] + [(value, value) for value in GOAL_ORDER],
+        "scopes": [("active", "Active students"), ("all", "Everyone enrolled")],
+        "engagement": _engagement_block(goal_rows),
+        "enrolled_total": len(goal_rows),
+        "enrollments": charts.stacked_columns(enrollment_points, [("came", "active", "Came at least once"), ("not_yet", "never", "Haven't come yet")], unit="enrollment"),
+        "conversion": {"recent": len(recent), "within_week": charts.share_label(within_week, len(recent)), "never": never, "never_share": charts.share_label(never, len(recent))},
+        "kept": charts.bars(kept, total=len(stopped), order=KEPT_COMING, keys={label: f"age-{index + 1}" for index, label in enumerate(KEPT_COMING)}),
+        "kept_total": len(stopped), "kept_early": charts.share_label(early, len(stopped)),
+        "ages": charts.columns(age_points, unit="student"),
+        "age_unknown": ages.get(NOT_RECORDED, 0),
+        "gender": charts.split(
+            Counter({"female": "Female", "male": "Male", "other": "Other"}.get(row["gender"], NOT_RECORDED) for row in rows),
+            order=["Female", "Male", "Other", NOT_RECORDED], keys={"Female": "female", "Male": "male", "Other": "other", NOT_RECORDED: "muted"},
+        ),
+        "localities": charts.bars(
+            charts.fold_tail(Counter(row["locality"] or NOT_RECORDED for row in rows), 10, other="Other areas"), total=total,
+            keys={NOT_RECORDED: "muted", "Other areas": "muted"},
+            url=lambda place: "" if place == "Other areas" else students_url(locality=NO_VALUE if place == NOT_RECORDED else place, engagement=status_filter, goal=goal),
+        ),
+        "purpose": charts.bars(
+            Counter(row["purpose_of_rm"] or NOT_RECORDED for row in rows), total=total, keys={NOT_RECORDED: "muted"}, labels=PURPOSE_LABELS,
+            url=lambda purpose: students_url(purpose=purpose, engagement=status_filter, goal=goal) if purpose != NOT_RECORDED else "",
+        ),
+        "needs": needs, "needs_compare": scope == "active" and bool(lapsed_rows),
+        "qualification": charts.bars(
+            qualification, total=total, order=QUALIFICATIONS + ("Other", NOT_RECORDED), keys={NOT_RECORDED: "muted", "Other": "muted"},
+            url=lambda value: students_url(qualification=NO_VALUE if value == NOT_RECORDED else value, engagement=status_filter, goal=goal),
+        ),
+        "expectations": expectations, "missing": missing,
+    }
+    return render(request, "rm/analytics.html", context)

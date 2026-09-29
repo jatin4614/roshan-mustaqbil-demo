@@ -87,21 +87,22 @@ SUBMENUS = [
 ]
 
 if settings.YOUTH_CENTRE_MODE:
+    ACCESSIBILITY = "base.rm_access.sidebar_frontdesk"
     SUBMENUS = [
         {
-            "menu": _("Mark Attendance"),
+            "menu": _("Mark attendance"),
             "redirect": reverse_lazy("youth-daily-attendance"),
-            "accessibility": "attendance.sidebar.dashboard_accessibility",
+            "accessibility": "base.rm_access.sidebar_frontdesk",
         },
         {
-            "menu": _("Attendance Dashboard"),
+            "menu": _("Attendance dashboard"),
             "redirect": reverse_lazy("rm-attendance-dashboard"),
-            "accessibility": "attendance.sidebar.dashboard_accessibility",
+            "accessibility": "base.rm_access.sidebar_coordinator",
         },
         {
-            "menu": _("Attendance History"),
+            "menu": _("Attendance history"),
             "redirect": reverse_lazy("youth-attendance-history"),
-            "accessibility": "attendance.sidebar.attendances_accessibility",
+            "accessibility": "base.rm_access.sidebar_frontdesk",
         },
     ]
 

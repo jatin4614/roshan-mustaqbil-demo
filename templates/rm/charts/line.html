@@ -1,0 +1,27 @@
+{% load l10n %}{% comment %}
+  Trend line from base.rm_charts.line. The path stretches with the card;
+  dots are HTML so they stay round and can carry tooltips.
+{% endcomment %}
+<div class="rm-line">
+    <div class="rm-line__plot">
+        <div class="rm-cols__grid" aria-hidden="true">
+            {% for tick in chart.ticks %}
+                <div class="rm-cols__tick{% if not tick.value %} rm-cols__tick--base{% endif %}" style="bottom: {{ tick.pos|unlocalize }}%"><span>{{ tick.value }}</span></div>
+            {% endfor %}
+        </div>
+        <svg viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true">
+            <path class="rm-line__area" d="{{ chart.area }}"></path>
+            <path class="rm-line__path" d="{{ chart.path }}" vector-effect="non-scaling-stroke"></path>
+        </svg>
+        {% for point in chart.items %}
+            <span class="rm-line__dot{% if point.last %} rm-line__dot--last{% endif %}" style="left: {{ point.left|unlocalize }}%; bottom: {{ point.bottom|unlocalize }}%" data-tip-title="{{ point.tip }}" data-tip="{{ point.tip_value }}"{% if point.last %} tabindex="0"{% endif %}></span>
+        {% endfor %}
+    </div>
+    <div class="rm-line__x" aria-hidden="true">
+        {% for point in chart.items %}{% if point.label %}<span style="left: {{ point.left|unlocalize }}%">{{ point.label }}</span>{% endif %}{% endfor %}
+    </div>
+    <table class="rm-sr">
+        <caption>{{ caption }}</caption>
+        {% for point in chart.items %}<tr><th scope="row">{{ point.tip }}</th><td>{{ point.value }}</td></tr>{% endfor %}
+    </table>
+</div>

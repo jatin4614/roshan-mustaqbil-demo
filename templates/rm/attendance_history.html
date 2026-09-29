@@ -1,1 +1,89 @@
-{% extends "index.html" %}{% block content %}<div class="oh-wrapper space-y-5"><header><p class="text-sm font-semibold text-primary-600">Roshan Mustaqbil</p><h1 class="text-3xl font-bold">Attendance History</h1><p class="text-neutral-500">Recorded visits only — students who do not arrive do not require an absent entry.</p></header><form class="grid gap-3 rounded-2xl bg-white p-5 shadow-card md:grid-cols-4"><input name="q" value="{{ request.GET.q }}" class="rounded-lg border p-3" placeholder="Name, registration or phone"><select name="goal" class="rounded-lg border p-3"><option value="">All career goals</option>{% for value,label in goals %}<option value="{{ value }}" {% if request.GET.goal == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><input type="date" name="date" value="{{ request.GET.date }}" class="rounded-lg border p-3"><select name="range" class="rounded-lg border p-3"><option value="">Any time</option><option value="0">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select><button class="rounded-lg bg-primary-600 px-4 py-3 font-bold text-white md:col-span-4">Apply filters</button></form><section class="overflow-hidden rounded-2xl bg-white shadow-card"><table class="w-full text-left text-sm"><thead class="bg-neutral-50 text-neutral-500"><tr><th class="p-4">Date</th><th>Time</th><th>Registration Number</th><th>Student</th><th>Phone</th><th>Career Goal</th></tr></thead><tbody>{% for record in records %}<tr class="border-t border-neutral-100"><td class="p-4">{{ record.attendance_date }}</td><td>{{ record.attendance_clock_in|time:"H:i"|default:"—" }}</td><td>{{ record.employee_id.badge_id }}</td><td><a class="font-semibold text-primary-600" href="{% url 'rm-student-profile' record.employee_id.id %}">{{ record.employee_id.get_full_name }}</a></td><td>{{ record.employee_id.phone }}</td><td>{{ record.employee_id.rm_profile.career_goal|default:"—" }}</td></tr>{% empty %}<tr><td colspan="6" class="p-8 text-center text-neutral-500">No attendance visits match these filters.</td></tr>{% endfor %}</tbody></table></section></div>{% endblock %}
+{% extends "index.html" %}
+{% block title %}Attendance history | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page">
+    <header class="rm-head">
+        <div>
+            <h1 class="rm-head__title">Attendance history</h1>
+            <p class="rm-head__sub">Every recorded check-in. Students who don't come simply have no entry for that day.</p>
+        </div>
+        <div class="rm-head__actions">
+            {% if can_export %}<a class="rm-btn rm-btn--secondary" href="{{ export_url }}">Download CSV</a>{% endif %}
+            <a class="rm-btn rm-btn--primary" href="{% url 'youth-daily-attendance' %}">Mark attendance</a>
+        </div>
+    </header>
+
+    <section class="rm-card rm-card--flush">
+        <form method="get" class="rm-form" style="gap: 0" role="search">
+            <div class="rm-toolbar">
+                <div class="rm-toolbar__grow">
+                    <label class="rm-sr" for="h-search">Search visits</label>
+                    <input id="h-search" type="search" name="q" value="{{ filters.q }}" class="rm-control rm-control--search" placeholder="Name, registration number or phone">
+                </div>
+                <label class="rm-sr" for="h-range">Period</label>
+                <select id="h-range" name="range" class="rm-control" style="width: auto" data-autosubmit>
+                    {% for value, label in ranges %}<option value="{{ value }}"{% if filters.range == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <label class="rm-sr" for="h-date">On a specific date</label>
+                <input id="h-date" type="date" name="date" value="{{ filters.date }}" max="{{ today|date:'Y-m-d' }}" class="rm-control" style="width: auto" data-autosubmit>
+                <label class="rm-sr" for="h-goal">Career goal</label>
+                <select id="h-goal" name="goal" class="rm-control" style="width: auto" data-autosubmit>
+                    <option value="">Any career goal</option>
+                    {% for value, label in goals %}<option value="{{ value }}"{% if filters.goal == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <button class="rm-btn rm-btn--primary" type="submit">Search</button>
+            </div>
+        </form>
+        <div class="rm-summary">
+            <span>{% if page.paginator.count %}Showing <b>{{ page.start_index }}–{{ page.end_index }}</b> of <b>{{ page.paginator.count }}</b> visits{% else %}No visits{% endif %}</span>
+            {% if query %}<a class="rm-card__link" href="{% url 'youth-attendance-history' %}">Clear filters</a>{% endif %}
+        </div>
+        <div class="rm-table-wrap">
+            <table class="rm-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Student</th>
+                        <th scope="col">Checked in</th>
+                        <th scope="col">Career goal</th>
+                        <th scope="col" class="rm-hide-sm">Marked by</th>
+                        <th scope="col"><span class="rm-sr">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        {% if row.new_day %}
+                            <tr class="rm-table__day"><td colspan="5">{% if row.record.attendance_date == today %}Today, {% endif %}{{ row.record.attendance_date|date:"l j F Y" }}</td></tr>
+                        {% endif %}
+                        <tr data-href="{% url 'rm-student-profile' row.student.id %}">
+                            <td>
+                                <a class="rm-person" href="{% url 'rm-student-profile' row.student.id %}">
+                                    <span class="rm-avatar k-{{ row.goal_key }}">{{ row.initials }}</span>
+                                    <span class="rm-person__text">
+                                        <span class="rm-person__name">{{ row.student.get_full_name }}</span>
+                                        <span class="rm-person__sub">{{ row.student.badge_id }}, {{ row.student.phone }}</span>
+                                    </span>
+                                </a>
+                            </td>
+                            <td class="rm-num" style="text-align: left">{{ row.record.attendance_clock_in|time:"g:i A"|default:"From a register" }}</td>
+                            <td>{% if row.student.rm_profile.career_goal %}<span class="rm-tag"><span class="rm-dot k-{{ row.goal_key }}"></span>{{ row.student.rm_profile.career_goal }}</span>{% else %}<span class="rm-muted">Not recorded</span>{% endif %}</td>
+                            <td class="rm-hide-sm">{{ row.marked_by|default:"—" }}</td>
+                            <td style="text-align: right">{% if row.can_remove %}<a class="rm-card__link" style="font-weight: 500" href="{% url 'rm-remove-visit' row.record.id %}?next={{ here|urlencode }}">Remove</a>{% endif %}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="5"><div class="rm-empty"><b>No visits match these filters.</b>Try a longer period or clear the search.</div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if page.paginator.num_pages > 1 %}
+            <nav class="rm-pager" aria-label="Pages">
+                <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+                <span class="rm-pager__links">
+                    {% if page.has_previous %}<a class="rm-btn rm-btn--secondary rm-btn--sm" href="?{% if query %}{{ query }}&amp;{% endif %}page={{ page.previous_page_number }}">Previous</a>{% endif %}
+                    {% if page.has_next %}<a class="rm-btn rm-btn--secondary rm-btn--sm" href="?{% if query %}{{ query }}&amp;{% endif %}page={{ page.next_page_number }}">Next</a>{% endif %}
+                </span>
+            </nav>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

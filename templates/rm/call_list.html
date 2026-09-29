@@ -1,0 +1,80 @@
+{% extends "index.html" %}
+{% block title %}Follow-up calls | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page">
+    <header class="rm-head">
+        <div>
+            <h1 class="rm-head__title">Follow-up calls</h1>
+            <p class="rm-head__sub">Students who have stopped coming, in the order most likely to bring them back. Saving a call takes the student off the list until they're due again.</p>
+        </div>
+        <div class="rm-head__actions">
+            <a class="rm-btn rm-btn--secondary" href="{% url 'rm-students' %}?call=due&amp;export=csv">Download as a call sheet</a>
+        </div>
+    </header>
+
+    <section class="rm-kpis" style="--rm-kpi-count: 4" aria-label="Calls">
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Waiting for a call</span>
+            <div class="rm-kpi__value">{{ total_due }}</div>
+            <div class="rm-kpi__note">Across all four lists</div>
+        </div>
+        <div class="rm-kpi" id="rm-calls-today">
+            <span class="rm-kpi__label">Calls logged today</span>
+            <div class="rm-kpi__value">{{ stats.today }}</div>
+            <div class="rm-kpi__note"><b>{{ stats.mine_today }}</b> by you</div>
+        </div>
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Calls this week</span>
+            <div class="rm-kpi__value">{{ stats.week }}</div>
+            <div class="rm-kpi__note">Reached the student in <b>{{ stats.reached }}</b></div>
+        </div>
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Came back after a call</span>
+            <div class="rm-kpi__value">{{ stats.came_back }}</div>
+            <div class="rm-kpi__note">Visited after being called, last 60 days</div>
+        </div>
+    </section>
+
+    <nav class="rm-tabs" aria-label="Lists">
+        {% for item in queues %}
+            <a href="?queue={{ item.key|urlencode }}{% if filter_query %}&amp;{{ filter_query }}{% endif %}"{% if item.key == queue %} aria-current="true"{% endif %}>{{ item.label }} <span>{{ item.count }}</span></a>
+        {% endfor %}
+    </nav>
+
+    <section class="rm-card" data-live>
+        <div class="rm-card__head">
+            <p class="rm-card__meta" style="margin: 0">{{ queue_help }}</p>
+            <form method="get" class="rm-inline-form rm-form" style="gap: 6px">
+                <input type="hidden" name="queue" value="{{ queue }}">
+                <label class="rm-sr" for="c-goal">Career goal</label>
+                <select id="c-goal" name="goal" class="rm-control" data-autosubmit>
+                    <option value="">Any goal</option>
+                    {% for value, label in goals %}<option value="{{ value }}"{% if goal == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <label class="rm-sr" for="c-area">Area</label>
+                <select id="c-area" name="locality" class="rm-control" data-autosubmit>
+                    <option value="">Any area</option>
+                    {% for value, label in localities %}<option value="{{ value }}"{% if locality == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            </form>
+        </div>
+        <div class="rm-flash rm-flash--danger" data-live-error hidden role="alert" style="margin: 0 0 12px"><span></span><a class="rm-btn rm-btn--secondary rm-btn--sm" hidden></a></div>
+        <ul class="rm-calls">
+            {% for row in rows %}
+                {% include "rm/partials/call_row.html" %}
+            {% empty %}
+                <li class="rm-empty"><b>Nobody on this list right now.</b>Try another list above, or come back tomorrow.</li>
+            {% endfor %}
+        </ul>
+        {% if page.paginator.num_pages > 1 %}
+            <nav class="rm-pager" aria-label="Pages" style="margin: 16px -22px -22px">
+                <span>Showing {{ page.start_index }}–{{ page.end_index }} of {{ page.paginator.count }}</span>
+                <span class="rm-pager__links">
+                    {% if page.has_previous %}<a class="rm-btn rm-btn--secondary rm-btn--sm" href="?queue={{ queue|urlencode }}{% if filter_query %}&amp;{{ filter_query }}{% endif %}&amp;page={{ page.previous_page_number }}">Previous</a>{% endif %}
+                    {% if page.has_next %}<a class="rm-btn rm-btn--secondary rm-btn--sm" href="?queue={{ queue|urlencode }}{% if filter_query %}&amp;{{ filter_query }}{% endif %}&amp;page={{ page.next_page_number }}">Next</a>{% endif %}
+                </span>
+            </nav>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

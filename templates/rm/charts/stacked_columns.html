@@ -1,0 +1,25 @@
+{% load l10n %}
+<ul class="rm-legend rm-legend--inline" style="margin: -4px 0 12px">
+    {% for item in chart.legend %}<li><span class="rm-swatch k-{{ item.key }}"></span>{{ item.label }}</li>{% endfor %}
+</ul>
+<div class="rm-cols {{ cls }}">
+    <div class="rm-cols__plot">
+        <div class="rm-cols__grid" aria-hidden="true">
+            {% for tick in chart.ticks %}
+                <div class="rm-cols__tick{% if not tick.value %} rm-cols__tick--base{% endif %}" style="bottom: {{ tick.pos|unlocalize }}%"><span>{{ tick.value }}</span></div>
+            {% endfor %}
+        </div>
+        <div class="rm-cols__bars" aria-hidden="true">
+            {% for col in chart.items %}
+                <div class="rm-col" data-tip-title="{{ col.tip }}" data-tip="{{ col.tip_value }}">
+                    <div class="rm-col__stack">{% for part in col.parts %}<span class="k-{{ part.key }}" style="height: {{ part.height|unlocalize }}%"></span>{% endfor %}</div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="rm-cols__x" aria-hidden="true">{% for col in chart.items %}<span>{{ col.label }}</span>{% endfor %}</div>
+    <table class="rm-sr">
+        <caption>{{ caption }}</caption>
+        {% for col in chart.items %}<tr><th scope="row">{{ col.tip }}</th><td>{{ col.tip_value }}</td></tr>{% endfor %}
+    </table>
+</div>

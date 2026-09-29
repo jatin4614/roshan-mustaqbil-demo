@@ -7,6 +7,12 @@ $(function () {
     // stops it from reacting to those synthetic hovers; "scroll" doesn't
     // bubble from a nested scroll container to document, so this needs a
     // capture-phase listener.
+    //
+    // Pages that don't load jQuery UI (the Roshan Mustaqbil centre screens
+    // draw their own tooltips) skip this.
+    if (!$.fn.tooltip) {
+        return;
+    }
     var $tooltipRoot = $(document).tooltip({
         position: {
             my: "right top+8",

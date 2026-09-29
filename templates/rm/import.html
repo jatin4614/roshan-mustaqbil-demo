@@ -1,0 +1,100 @@
+{% extends "index.html" %}
+{% block title %}Import from a spreadsheet | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page">
+    <header class="rm-head">
+        <div>
+            <h1 class="rm-head__title">Import from a spreadsheet</h1>
+            <p class="rm-head__sub">Bring in registers kept on paper or in Excel. You'll see a check of every row before anything is saved.</p>
+        </div>
+        <nav class="rm-seg" aria-label="What to import">
+            <a href="?kind=students"{% if kind == "students" %} aria-current="true"{% endif %}>Students</a>
+            <a href="?kind=visits"{% if kind == "visits" %} aria-current="true"{% endif %}>Past attendance</a>
+        </nav>
+    </header>
+
+    {% if preview %}
+        <section class="rm-card rm-card--flush">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Check before importing: {{ preview.file }}</h2>
+                    <p class="rm-card__meta"><b>{{ preview.new }}</b> will be added, {{ preview.exists }} are already here and will be skipped{% if preview.errors %}, and <b>{{ preview.errors }}</b> need fixing in the file{% endif %}.</p>
+                </div>
+            </div>
+            <div class="rm-summary" style="border-top: 1px solid var(--rm-line)">
+                <span>{% if preview.errors %}Rows with problems are skipped. Fix them in the spreadsheet and import it again later; rows already added will be skipped next time.{% else %}Everything looks right.{% endif %}</span>
+                <span style="display: flex; gap: 8px">
+                    <form method="post">{% csrf_token %}<input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="step" value="cancel"><button class="rm-btn rm-btn--secondary" type="submit">Start again</button></form>
+                    {% if preview.new %}<form method="post">{% csrf_token %}<input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="step" value="confirm"><button class="rm-btn rm-btn--primary" type="submit">Import {{ preview.new }} {% if kind == "students" %}student{{ preview.new|pluralize }}{% else %}visit{{ preview.new|pluralize }}{% endif %}</button></form>{% endif %}
+                </span>
+            </div>
+            <div class="rm-table-wrap">
+                <table class="rm-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Row</th>
+                            <th scope="col">Result</th>
+                            {% if kind == "students" %}<th scope="col">Name</th><th scope="col">Phone</th><th scope="col">Goal</th><th scope="col">Enrolled</th>{% else %}<th scope="col">Student</th><th scope="col">Date</th><th scope="col">Time</th>{% endif %}
+                            <th scope="col">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in preview.rows %}
+                            <tr>
+                                <td class="rm-num" style="text-align: left">{{ row.line }}</td>
+                                <td><span class="rm-state rm-state--{{ row.state }}">{% if row.state == "new" %}Will add{% elif row.state == "exists" %}Skip{% else %}Needs fixing{% endif %}</span></td>
+                                {% if kind == "students" %}
+                                    <td>{{ row.values.full_name|default:"—" }}</td><td class="rm-num" style="text-align: left">{{ row.values.phone|default:"—" }}</td><td>{{ row.values.career_goal|default:"—" }}</td><td>{{ row.values.registration_date|default:"—" }}</td>
+                                {% else %}
+                                    <td>{{ row.values.name|default:"—" }}</td><td>{{ row.values.date|default:"—" }}</td><td>{{ row.values.time|default:"—" }}</td>
+                                {% endif %}
+                                <td>{% for error in row.errors %}<span style="color: var(--rm-danger)">{{ error|capfirst }}. </span>{% endfor %}{% for note in row.notes %}{{ note|capfirst }}. {% endfor %}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if preview.hidden %}<p class="rm-summary" style="border: 0">…and {{ preview.hidden }} more rows, checked the same way.</p>{% endif %}
+        </section>
+    {% else %}
+        <div class="rm-grid rm-grid--main">
+            <section class="rm-card">
+                <div class="rm-card__head">
+                    <div>
+                        <h2 class="rm-card__title">{% if kind == "students" %}Import students{% else %}Import past attendance{% endif %}</h2>
+                        <p class="rm-card__meta">{% if kind == "students" %}One row per student. Students already enrolled (same phone and name, or registration number) are skipped.{% else %}One row per visit: who came and on which date. Import students first.{% endif %}</p>
+                    </div>
+                </div>
+                <ol class="rm-steps">
+                    <li><a class="rm-card__link" href="?kind={{ kind }}&amp;template=1">Download the template</a> and open it in Excel.</li>
+                    <li>Paste your register into it, keeping the heading row. Leave cells blank when you don't know.</li>
+                    <li>Save it as <b>CSV UTF-8</b> (File, Save As) and choose it below.</li>
+                </ol>
+                <form method="post" enctype="multipart/form-data" class="rm-form" style="margin-top: 20px; gap: 12px">
+                    {% csrf_token %}
+                    <input type="hidden" name="kind" value="{{ kind }}">
+                    <input type="hidden" name="step" value="check">
+                    <div class="rm-field">
+                        <label for="import-file">CSV file</label>
+                        <input id="import-file" type="file" name="file" accept=".csv,text/csv" required class="rm-control" style="padding: 8px">
+                    </div>
+                    <div><button class="rm-btn rm-btn--primary" type="submit">Check the file</button></div>
+                </form>
+            </section>
+            <section class="rm-card">
+                <div class="rm-card__head"><h2 class="rm-card__title">Columns</h2></div>
+                {% if kind == "students" %}
+                    <p class="rm-card__meta" style="margin-top: 0">Only <span class="rm-code">full_name</span> and <span class="rm-code">phone</span> are required. Dates can be 2024-05-31 or 31-05-2024.</p>
+                    <p style="line-height: 2">{% for column in student_columns %}<span class="rm-code">{{ column }}</span> {% endfor %}</p>
+                    <p class="rm-card__meta">Career goal: {{ goals|join:", " }}. Anything else is kept as "Other" with your wording.</p>
+                    <p class="rm-card__meta">Area: {{ areas|join:", " }}.</p>
+                    <p class="rm-card__meta">Support needed: separate items with semicolons, for example “Study Space; Mock Tests”.</p>
+                {% else %}
+                    <p class="rm-card__meta" style="margin-top: 0">Give <span class="rm-code">registration_number</span> or <span class="rm-code">phone</span>, and the <span class="rm-code">date</span>. <span class="rm-code">time</span> is optional.</p>
+                    <p style="line-height: 2">{% for column in visit_columns %}<span class="rm-code">{{ column }}</span> {% endfor %}</p>
+                {% endif %}
+            </section>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

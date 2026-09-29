@@ -1,0 +1,32 @@
+<aside class="rm-card rm-today" id="rm-desk-today"{% if oob %} hx-swap-oob="true"{% endif %} aria-label="Checked in">
+    <p class="rm-card__meta" style="margin: 0">{% if is_today %}Present today{% else %}Present on {{ day|date:"j M" }}{% endif %}</p>
+    <div class="rm-today__count">{{ today_count }}<small>student{{ today_count|pluralize }}</small></div>
+    <div class="rm-card__head" style="margin: 20px 0 2px">
+        <h2 class="rm-card__title">Latest check-ins</h2>
+        {% if can_correct %}<a class="rm-card__link" href="{% url 'rm-attendance-dashboard' %}">Attendance dashboard</a>{% endif %}
+    </div>
+    <ul class="rm-list rm-list--scroll">
+        {% for checkin in checkins %}
+            <li class="rm-list__item">
+                <a class="rm-person" href="{% url 'rm-student-profile' checkin.student.id %}">
+                    <span class="rm-avatar k-{{ checkin.goal_key }}">{{ checkin.initials }}</span>
+                    <span class="rm-person__text">
+                        <span class="rm-person__name">{{ checkin.student.get_full_name }}</span>
+                        <span class="rm-person__sub">{{ checkin.student.badge_id }}{% if checkin.goal %}, {{ checkin.goal }}{% endif %}</span>
+                    </span>
+                </a>
+                <span style="display: inline-flex; align-items: center; gap: 2px">
+                    <span class="rm-list__time">{{ checkin.record.attendance_clock_in|time:"g:i A"|default:"Register" }}</span>
+                    <form method="post" action="{% url 'rm-undo-checkin' %}" hx-post="{% url 'rm-undo-checkin' %}" hx-swap="none" hx-disabled-elt="find button">
+                        {% csrf_token %}
+                        <input type="hidden" name="record_id" value="{{ checkin.record.id }}">
+                        <input type="hidden" name="on" value="{{ day|date:'Y-m-d' }}">
+                        <button class="rm-icon-btn" type="submit" aria-label="Remove {{ checkin.student.get_full_name }}'s check-in" data-tip="Remove this check-in">×</button>
+                    </form>
+                </span>
+            </li>
+        {% empty %}
+            <li class="rm-empty"><b>No one has checked in yet{% if is_today %} today{% endif %}.</b>Check-ins appear here as students arrive.</li>
+        {% endfor %}
+    </ul>
+</aside>

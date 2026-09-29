@@ -1,1 +1,226 @@
-{% extends "index.html" %}{% block content %}<div class="oh-wrapper space-y-5"><header class="flex flex-wrap items-end justify-between gap-4"><div><p class="text-sm font-semibold text-primary-600">Roshan Mustaqbil</p><h1 class="text-3xl font-bold">{% if inactive_only %}Inactive Students{% else %}Students{% endif %}</h1><p class="text-neutral-500">Registered people, their RM needs, and real visit-based engagement.</p></div><a href="{% url 'rm-enroll-student' %}" class="rounded-xl bg-primary-600 px-5 py-3 font-bold text-white">Enroll Student</a></header><form class="grid gap-3 rounded-2xl bg-white p-5 shadow-card md:grid-cols-4"><input name="q" value="{{ request.GET.q }}" class="rounded-lg border p-3" placeholder="Name, registration or phone"><select name="engagement" class="rounded-lg border p-3"><option value="">All engagement</option><option>Active</option><option>Dormant</option><option>Inactive</option><option>Never Attended</option></select><select name="goal" class="rounded-lg border p-3"><option value="">All career goals</option>{% for value,label in goals %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select><select name="purpose" class="rounded-lg border p-3"><option value="">All purposes</option>{% for value,label in purposes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select><select name="gender" class="rounded-lg border p-3"><option value="">All genders</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select><select name="age" class="rounded-lg border p-3"><option value="">All ages</option>{% for age in age_groups %}<option>{{ age }}</option>{% endfor %}</select><select name="defence_entry" class="rounded-lg border p-3"><option value="">All Defence entries</option><option>NDA</option><option>TES</option><option>Other Entry Scheme</option></select><select name="current_status" class="rounded-lg border p-3"><option value="">All current statuses</option>{% for value,label in statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select><div class="flex gap-2 md:col-span-4"><button class="rounded-lg bg-primary-600 px-5 py-3 font-bold text-white">Apply Filters</button><a href="{% if inactive_only %}{% url 'rm-inactive-students' %}{% else %}{% url 'rm-students' %}{% endif %}" class="rounded-lg border px-5 py-3 font-semibold">Clear Filters</a></div></form><section class="overflow-auto rounded-2xl bg-white shadow-card"><table class="min-w-full text-left text-sm"><thead class="bg-neutral-50 text-neutral-500"><tr><th class="p-4">Student</th><th>Registration</th><th>Phone</th><th>Career Goal</th><th>Engagement</th><th>Last Visit</th><th>Follow-up Status</th><th></th></tr></thead><tbody>{% for row in rows %}<tr class="border-t border-neutral-100"><td class="p-4 font-semibold">{{ row.student.get_full_name }}</td><td>{{ row.student.badge_id }}</td><td>{{ row.student.phone }}</td><td>{{ row.student.rm_profile.career_goal|default:"—" }}{% if row.student.rm_profile.defence_entry %}<span class="text-neutral-400"> · {{ row.student.rm_profile.defence_entry }}</span>{% endif %}</td><td><span class="rounded-full bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700">{{ row.status }}</span></td><td>{{ row.last_visit|default:"Never" }}</td><td>{{ row.student.rm_profile.current_status|default:"—" }}</td><td><a class="font-bold text-primary-600" href="{% url 'rm-student-profile' row.student.id %}">View</a></td></tr>{% empty %}<tr><td colspan="8" class="p-9 text-center text-neutral-500">No students match these filters.</td></tr>{% endfor %}</tbody></table></section></div>{% endblock %}
+{% extends "index.html" %}
+{% block title %}{% if inactive_only %}Inactive students{% else %}Students{% endif %} | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page">
+    <header class="rm-head">
+        <div>
+            <h1 class="rm-head__title">{% if inactive_only %}Inactive students{% else %}Students{% endif %}</h1>
+            <p class="rm-head__sub">{% if inactive_only %}No visit for 60 days or more, or never came. Use the <a class="rm-card__link" href="{% url 'rm-calls' %}">call list</a> to follow up.{% else %}Everyone enrolled at the centre, with how recently they came.{% endif %}</p>
+        </div>
+        <div class="rm-head__actions">
+            <a class="rm-btn rm-btn--secondary" href="{{ export_url }}">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a1 1 0 0 1 1 1v7.6l2.3-2.3a1 1 0 1 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L9 11.6V4a1 1 0 0 1 1-1zM4 15a1 1 0 0 1 1 1h10a1 1 0 1 1 0 2H5a2 2 0 0 1-2-2 1 1 0 0 1 1-1z"/></svg>
+                Download CSV
+            </a>
+            <a class="rm-btn rm-btn--primary" href="{% url 'rm-enroll-student' %}">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 4a1 1 0 0 1 1 1v4h4a1 1 0 1 1 0 2h-4v4a1 1 0 1 1-2 0v-4H5a1 1 0 1 1 0-2h4V5a1 1 0 0 1 1-1z"/></svg>
+                Enroll student
+            </a>
+        </div>
+    </header>
+
+    <section class="rm-card rm-card--flush">
+        <form method="get" action="{{ base_url }}" class="rm-form" style="gap: 0" role="search">
+            <div class="rm-toolbar">
+                <div class="rm-toolbar__grow">
+                    <label class="rm-sr" for="student-search">Search students</label>
+                    <input id="student-search" type="search" name="q" value="{{ filters.q }}" class="rm-control rm-control--search" placeholder="Name, registration number, phone or guardian">
+                </div>
+                {% if not inactive_only %}
+                    <label class="rm-sr" for="f-engagement">Status</label>
+                    <select id="f-engagement" name="engagement" class="rm-control" style="width: auto" data-autosubmit>
+                        <option value="">Any status</option>
+                        {% for value, label in engagements %}<option value="{{ value }}"{% if filters.engagement == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                {% endif %}
+                <label class="rm-sr" for="f-goal">Career goal</label>
+                <select id="f-goal" name="goal" class="rm-control" style="width: auto" data-autosubmit>
+                    <option value="">Any career goal</option>
+                    {% for value, label in goals %}<option value="{{ value }}"{% if filters.goal == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    <option value="{{ no_value }}"{% if filters.goal == no_value %} selected{% endif %}>Not recorded</option>
+                </select>
+                <label class="rm-sr" for="f-sort">Sort by</label>
+                <select id="f-sort" name="sort" class="rm-control" style="width: auto" data-autosubmit>
+                    {% for value, label in sorts %}<option value="{{ value }}"{% if filters.sort == value %} selected{% endif %}>Sort: {{ label }}</option>{% endfor %}
+                </select>
+                <button type="button" class="rm-btn rm-btn--secondary" data-toggle-more="more-filters" aria-expanded="{% if more_open %}true{% else %}false{% endif %}" aria-controls="more-filters">More filters</button>
+                <button type="submit" class="rm-btn rm-btn--primary">Search</button>
+            </div>
+            <div class="rm-more" id="more-filters"{% if not more_open %} hidden{% endif %}>
+                <div class="rm-field">
+                    <label for="f-target">Exam</label>
+                    <select id="f-target" name="target" data-autosubmit>
+                        <option value="">Any exam</option>
+                        {% for value, label in targets %}<option value="{{ value }}"{% if filters.target == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        <option value="NEET UG"{% if filters.target == "NEET UG" %} selected{% endif %}>NEET UG</option>
+                        <option value="NEET PG"{% if filters.target == "NEET PG" %} selected{% endif %}>NEET PG</option>
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-stage">Preparation stage</label>
+                    <select id="f-stage" name="prep_stage" data-autosubmit>
+                        <option value="">Any stage</option>
+                        {% for value, label in prep_stages %}<option value="{{ value }}"{% if filters.prep_stage == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-locality">Area (tehsil)</label>
+                    <select id="f-locality" name="locality" data-autosubmit>
+                        <option value="">Any area</option>
+                        {% for value, label in localities %}<option value="{{ value }}"{% if filters.locality == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        <option value="{{ no_value }}"{% if filters.locality == no_value %} selected{% endif %}>Not recorded</option>
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-need">Support they need</label>
+                    <select id="f-need" name="requirement" data-autosubmit>
+                        <option value="">Any support</option>
+                        {% for item in requirements %}<option value="{{ item }}"{% if filters.requirement == item %} selected{% endif %}>{{ item }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-age">Age group</label>
+                    <select id="f-age" name="age" data-autosubmit>
+                        <option value="">Any age</option>
+                        {% for label in age_groups %}<option value="{{ label }}"{% if filters.age == label %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-gender">Gender</label>
+                    <select id="f-gender" name="gender" data-autosubmit>
+                        <option value="">Any gender</option>
+                        {% for value, label in genders %}<option value="{{ value }}"{% if filters.gender == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-purpose">Reason for joining</label>
+                    <select id="f-purpose" name="purpose" data-autosubmit>
+                        <option value="">Any reason</option>
+                        {% for value, label in purposes %}<option value="{{ value }}"{% if filters.purpose == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-qual">Qualification</label>
+                    <select id="f-qual" name="qualification" data-autosubmit>
+                        <option value="">Any qualification</option>
+                        {% for value in qualifications %}<option value="{{ value }}"{% if filters.qualification == value %} selected{% endif %}>{{ value }}</option>{% endfor %}
+                        <option value="Other"{% if filters.qualification == "Other" %} selected{% endif %}>Other</option>
+                        <option value="{{ no_value }}"{% if filters.qualification == no_value %} selected{% endif %}>Not recorded</option>
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-registered">Enrolled</label>
+                    <select id="f-registered" name="registered" data-autosubmit>
+                        <option value="">Any time</option>
+                        {% for value, label in registered_ranges %}<option value="{{ value }}"{% if filters.registered == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-contacted">Last contacted</label>
+                    <select id="f-contacted" name="contacted" data-autosubmit>
+                        <option value="">Any</option>
+                        {% for value, label in contacted_options %}<option value="{{ value }}"{% if filters.contacted == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-status">Doing now</label>
+                    <select id="f-status" name="current_status" data-autosubmit>
+                        <option value="">Any</option>
+                        <option value="{{ no_status }}"{% if filters.current_status == no_status %} selected{% endif %}>Not followed up yet</option>
+                        {% for value, label in statuses %}<option value="{{ value }}"{% if filters.current_status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-outcome">Moved on</label>
+                    <select id="f-outcome" name="outcome" data-autosubmit>
+                        <option value="">Any</option>
+                        {% for value, label in outcomes %}<option value="{{ value }}"{% if filters.outcome == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="rm-field">
+                    <label for="f-missing">Missing details</label>
+                    <select id="f-missing" name="missing" data-autosubmit>
+                        <option value="">Show everyone</option>
+                        {% for value, label in missing_options %}<option value="{{ value }}"{% if filters.missing == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+        </form>
+
+        <div class="rm-summary">
+            <span>
+                {% if page.paginator.count %}Showing <b>{{ page.start_index }}–{{ page.end_index }}</b> of <b>{{ page.paginator.count }}</b>{% else %}No matches{% endif %}
+                {% if chips %}<span class="rm-muted"> matching your filters</span>{% endif %}
+            </span>
+            {% if chips %}
+                <div class="rm-chips">
+                    {% for chip in chips %}<a class="rm-chip" href="{{ chip.url }}" aria-label="Remove filter {{ chip.label }}">{{ chip.label }}</a>{% endfor %}
+                    <a class="rm-card__link" href="{{ base_url }}" style="align-self: center; margin-left: 6px">Clear all</a>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="rm-table-wrap">
+            <table class="rm-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Student</th>
+                        <th scope="col">Career goal</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Last visit</th>
+                        <th scope="col" class="rm-hide-sm">Doing now</th>
+                        <th scope="col"><span class="rm-sr">Open</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        <tr data-href="{% url 'rm-student-profile' row.student.id %}">
+                            <td>
+                                <a class="rm-person" href="{% url 'rm-student-profile' row.student.id %}">
+                                    <span class="rm-avatar k-{{ row.goal_key }}">{{ row.initials }}</span>
+                                    <span class="rm-person__text">
+                                        <span class="rm-person__name">{{ row.student.get_full_name }}</span>
+                                        <span class="rm-person__sub">{{ row.student.badge_id }}, {{ row.student.phone }}</span>
+                                    </span>
+                                </a>
+                            </td>
+                            <td>
+                                {% if row.student.rm_profile.career_goal %}
+                                    <span class="rm-tag"><span class="rm-dot k-{{ row.goal_key }}"></span>{{ row.student.rm_profile.career_goal }}{% if row.target and row.target != row.student.rm_profile.career_goal %} <span class="rm-muted">{{ row.target }}</span>{% endif %}</span>
+                                {% else %}<span class="rm-muted">Not recorded</span>{% endif %}
+                            </td>
+                            <td><span class="rm-pill k-{{ row.status_key }}">{{ row.status_label }}</span></td>
+                            <td>
+                                {% if row.last_visit %}
+                                    <span title="{{ row.last_visit|date:'l, j F Y' }}">{% if row.days_since_visit == 0 %}Today{% elif row.days_since_visit == 1 %}Yesterday{% elif row.days_since_visit < 60 %}{{ row.days_since_visit }} days ago{% else %}{{ row.last_visit|date:"j M Y" }}{% endif %}</span>
+                                {% else %}<span class="rm-muted">Never</span>{% endif %}
+                            </td>
+                            <td class="rm-hide-sm">{{ row.doing_now|default:"—" }}</td>
+                            <td class="rm-chev" aria-hidden="true">›</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="6"><div class="rm-empty"><b>No students match these filters.</b><a class="rm-card__link" href="{{ base_url }}">Clear the filters</a> to see everyone.</div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page.paginator.num_pages > 1 %}
+            <nav class="rm-pager" aria-label="Pages">
+                <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+                <span class="rm-pager__links">
+                    {% if page.has_previous %}<a class="rm-btn rm-btn--secondary rm-btn--sm" href="?{% if query %}{{ query }}&amp;{% endif %}page={{ page.previous_page_number }}">Previous</a>{% endif %}
+                    {% if page.has_next %}<a class="rm-btn rm-btn--secondary rm-btn--sm" href="?{% if query %}{{ query }}&amp;{% endif %}page={{ page.next_page_number }}">Next</a>{% endif %}
+                </span>
+            </nav>
+        {% endif %}
+    </section>
+
+    <details class="rm-card" style="padding: 14px 22px">
+        <summary style="cursor: pointer; font-weight: 600">What do the statuses mean?</summary>
+        <dl class="rm-facts" style="margin-top: 14px">
+            {% for label, help in status_help %}<div><dt>{{ label }}</dt><dd>{{ help }}</dd></div>{% endfor %}
+        </dl>
+    </details>
+</div>
+{% endblock %}

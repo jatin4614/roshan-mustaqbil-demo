@@ -1,1 +1,149 @@
-{% extends "index.html" %}{% block content %}<div class="oh-wrapper rm-shell space-y-5">{% include "rm/dashboard_header.html" with title="Analytics" subtitle="Deeper RM insight into who uses the centre, why they come, and what support they need." %}<div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{% include "rm/chart_card.html" with title="Engagement Status" data=charts.engagement %}{% include "rm/chart_card.html" with title="Age Demographics" data=charts.age %}{% include "rm/chart_card.html" with title="Gender Demographics" data=charts.gender %}{% include "rm/chart_card.html" with title="Career Goals" data=charts.goals %}{% include "rm/chart_card.html" with title="Purpose of RM" data=charts.purpose %}{% include "rm/chart_card.html" with title="Requirements from RM" data=charts.requirements %}{% include "rm/chart_card.html" with title="Inactive Student Current Status" data=charts.inactive_status %}{% include "rm/trend_card.html" with title="Daily Visit Trend" data=trend %}</div></div>{% endblock %}
+{% extends "index.html" %}
+{% block title %}Analytics | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page">
+    <header class="rm-head">
+        <div>
+            <h1 class="rm-head__title">Analytics</h1>
+            <p class="rm-head__sub">Who uses the centre, why they come, what they need, and when they drop off.</p>
+        </div>
+        <div class="rm-head__actions" style="flex-direction: column; align-items: flex-end">
+            <nav class="rm-seg" aria-label="Which students">
+                {% for value, label in scopes %}
+                    <a href="?who={{ value }}{% if goal %}&amp;goal={{ goal|urlencode }}{% endif %}"{% if value == scope %} aria-current="true"{% endif %}>{{ label }}</a>
+                {% endfor %}
+            </nav>
+            <nav class="rm-seg" aria-label="Career goal">
+                {% for value, label in goal_filters %}
+                    <a href="?who={{ scope }}{% if value %}&amp;goal={{ value|urlencode }}{% endif %}"{% if value == goal %} aria-current="true"{% endif %}>{{ label }}</a>
+                {% endfor %}
+            </nav>
+        </div>
+    </header>
+
+    <section class="rm-kpis" style="--rm-kpi-count: 6" aria-label="Students">
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Enrolled{% if goal %}, {{ goal }}{% endif %}</span>
+            <div class="rm-kpi__value">{{ enrolled_total }}</div>
+            <div class="rm-kpi__note">Everyone ever enrolled</div>
+        </div>
+        {% for status in engagement %}
+            <a class="rm-kpi" href="{{ status.url }}{% if goal %}&amp;goal={{ goal|urlencode }}{% endif %}">
+                <span class="rm-kpi__label"><span class="rm-swatch k-{{ status.key }}"></span>{{ status.label }}</span>
+                <div class="rm-kpi__value">{{ status.count }}</div>
+                <div class="rm-kpi__note">{{ status.help }}</div>
+            </a>
+        {% endfor %}
+    </section>
+
+    <p class="rm-notice rm-notice--good" style="margin: 0">
+        <span>{% if scope == "active" %}The charts below describe the <b>{{ total }} active students</b>, the ones who actually use the centre now. Enrollments and drop-off use everyone.{% else %}The charts below describe <b>all {{ total }} students ever enrolled</b>, including those who stopped coming.{% endif %}</span>
+    </p>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">New enrollments, and whether they came</h2>
+                    <p class="rm-card__meta">{% if conversion.recent %}Of the {{ conversion.recent }} enrolled 1 to 12 months ago, <b>{{ conversion.within_week }}</b> came within a week and <b>{{ conversion.never }}</b> ({{ conversion.never_share }}) never came.{% else %}Per month, last 12 months{% endif %}</p>
+                </div>
+            </div>
+            {% include "rm/charts/stacked_columns.html" with chart=enrollments cls="rm-cols--labels rm-cols--dense" caption="New enrollments per month" %}
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">How long students kept coming before they stopped</h2>
+                    <p class="rm-card__meta">{% if kept_total %}{{ kept_total }} inactive students. <b>{{ kept_early }}</b> stopped within their first month, so the first weeks matter most.{% else %}No one has stopped coming yet.{% endif %}</p>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=kept empty="No one has stopped coming." %}
+        </section>
+    </div>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Age and gender</h2>
+                    <p class="rm-card__meta">Click an age group for the list{% if age_unknown %}; {{ age_unknown }} without a date of birth{% endif %}</p>
+                </div>
+            </div>
+            {% include "rm/charts/columns.html" with chart=ages cls="rm-cols--short rm-cols--labels" linked=True caption="Students by age group" %}
+            <div style="margin-top: 22px">
+                {% include "rm/charts/split.html" with chart=gender %}
+            </div>
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Where they come from</h2>
+                    <p class="rm-card__meta">Students by tehsil</p>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=localities %}
+        </section>
+    </div>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Support they need</h2>
+                    <p class="rm-card__meta">Share asking for each; students can ask for several.{% if needs_compare %} The second figure is the share among students who stopped coming.{% endif %}</p>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=needs compare_label="stopped:" %}
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Main reason for joining</h2>
+                    <p class="rm-card__meta">As given at enrollment</p>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=purpose %}
+            <div class="rm-card__head" style="margin: 26px 0 14px">
+                <div>
+                    <h2 class="rm-card__title">Highest qualification</h2>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=qualification %}
+        </section>
+    </div>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">What students expect from RM</h2>
+                    <p class="rm-card__meta">In their own words, most recent enrollments first</p>
+                </div>
+                <a class="rm-card__link" href="{% url 'rm-students' %}?export=csv">Download all</a>
+            </div>
+            {% for row in expectations %}
+                <figure class="rm-quote">
+                    <p>{{ row.expectations }}</p>
+                    <small><a href="{% url 'rm-student-profile' row.id %}">{{ row.name }}</a>, {{ row.goal }}</small>
+                </figure>
+            {% empty %}
+                <div class="rm-empty">No expectations recorded yet.</div>
+            {% endfor %}
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Details to complete</h2>
+                    <p class="rm-card__meta">Gaps that make these charts less reliable</p>
+                </div>
+            </div>
+            <ul class="rm-checklist">
+                <li><a href="{% url 'rm-students' %}?missing=dob"><span>No date of birth</span><b>{{ missing.dob }}</b></a></li>
+                <li><a href="{% url 'rm-students' %}?missing=goal"><span>No career goal</span><b>{{ missing.goal }}</b></a></li>
+                <li><a href="{% url 'rm-students' %}?missing=locality"><span>No area (tehsil)</span><b>{{ missing.locality }}</b></a></li>
+                <li><a href="{% url 'rm-students' %}?missing=phone_dup"><span>Phone number shared with another student</span><b>{{ missing.phone }}</b></a></li>
+            </ul>
+        </section>
+    </div>
+</div>
+{% endblock %}

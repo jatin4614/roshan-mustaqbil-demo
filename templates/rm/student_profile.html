@@ -1,1 +1,132 @@
-{% extends "index.html" %}{% block content %}<div class="oh-wrapper max-w-6xl space-y-5"><section class="rounded-3xl bg-gradient-to-r from-primary-700 to-primary-500 p-7 text-white shadow-card"><div class="flex flex-wrap items-center justify-between gap-5"><div><p class="text-sm text-primary-100">Student Profile</p><h1 class="text-3xl font-bold">{{ student.get_full_name }}</h1><p class="mt-1">{{ student.badge_id }} · {{ student.phone }} · {{ student.dob|default:"DOB not recorded" }}</p><p class="mt-2 font-semibold">{{ profile.career_goal|default:"Career goal not recorded" }}{% if profile.defence_entry %} · {{ profile.defence_entry }}{% endif %} · {{ engagement.status }}</p></div><a href="{% url 'rm-edit-student' student.id %}" class="rounded-xl bg-white px-4 py-2 font-bold text-primary-700">Edit Student</a></div></section><div class="grid gap-4 md:grid-cols-4"><div class="rounded-2xl bg-white p-5 shadow-card"><p class="text-sm text-neutral-500">Last Visit</p><b class="text-xl">{{ engagement.last_visit|default:"Never" }}</b></div><div class="rounded-2xl bg-white p-5 shadow-card"><p class="text-sm text-neutral-500">Total Visits</p><b class="text-xl">{{ total_visits }}</b></div><div class="rounded-2xl bg-white p-5 shadow-card"><p class="text-sm text-neutral-500">Visits This Month</p><b class="text-xl">{{ month_visits }}</b></div><div class="rounded-2xl bg-white p-5 shadow-card"><p class="text-sm text-neutral-500">Days Since Visit</p><b class="text-xl">{{ engagement.days_since_visit|default:"—" }}</b></div></div><div class="grid gap-5 lg:grid-cols-2"><section class="rounded-2xl bg-white p-6 shadow-card"><h2 class="text-xl font-bold">Overview</h2><dl class="mt-4 grid gap-4 text-sm"><div><dt class="text-neutral-500">Purpose of Coming to RM</dt><dd class="font-semibold">{{ profile.purpose_of_rm|default:"—" }} {% if profile.purpose_other %}— {{ profile.purpose_other }}{% endif %}</dd></div><div><dt class="text-neutral-500">Expectations from RM</dt><dd>{{ profile.expectations|default:"—" }}</dd></div><div><dt class="text-neutral-500">Requirements from RM</dt><dd>{{ profile.requirements|join:", "|default:"—" }} {% if profile.requirements_other %}— {{ profile.requirements_other }}{% endif %}</dd></div><div><dt class="text-neutral-500">Education / Institution</dt><dd>{{ student.qualification|default:"—" }} · {{ profile.institution|default:"—" }}</dd></div><div><dt class="text-neutral-500">Guardian</dt><dd>{{ profile.guardian_name|default:"—" }} · {{ profile.guardian_phone|default:"—" }}</dd></div></dl></section><section class="rounded-2xl bg-white p-6 shadow-card"><h2 class="text-xl font-bold">Attendance</h2><div class="mt-3 space-y-3">{% for visit in visits %}<div class="flex justify-between border-b border-neutral-100 pb-2 text-sm"><span>{{ visit.attendance_date }}</span><span>{{ visit.attendance_clock_in|time:"H:i"|default:"Visit recorded" }}</span></div>{% empty %}<p class="text-neutral-500">No RM visits recorded yet.</p>{% endfor %}</div></section></div><section class="rounded-2xl bg-white p-6 shadow-card"><h2 class="text-xl font-bold">Follow-up</h2><p class="mt-1 text-sm text-neutral-500">Use this for dormant or inactive students; it is optional at registration.</p><form method="post" class="mt-4 grid gap-4 md:grid-cols-2">{% csrf_token %}{% for field in followup %}<div {% if field.name == 'followup_notes' %}class="md:col-span-2"{% endif %}><label class="mb-1 block text-sm font-semibold">{{ field.label }}</label>{{ field }}</div>{% endfor %}<div class="md:col-span-2"><button class="rounded-xl bg-primary-600 px-5 py-3 font-bold text-white">Save Follow-up</button></div></form></section></div><style>input,select,textarea{width:100%;border:1px solid #d4d4d8;border-radius:.6rem;padding:.7rem}</style>{% endblock %}
+{% extends "index.html" %}
+{% block title %}{{ student.get_full_name }} | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page">
+    <div>
+        {% if rm_role != "frontdesk" %}<a class="rm-back" href="{% url 'rm-students' %}">‹ All students</a>{% else %}<a class="rm-back" href="{% url 'youth-daily-attendance' %}">‹ Mark attendance</a>{% endif %}
+        <section class="rm-card rm-profile-head">
+            <div class="rm-profile-head__who">
+                <span class="rm-avatar rm-avatar--lg k-{{ goal_key }}">{{ initials }}</span>
+                <div style="min-width: 0">
+                    <h1>{{ student.get_full_name }}</h1>
+                    <div class="rm-profile-head__meta">
+                        <span class="rm-num">{{ student.badge_id }}</span>
+                        <span class="rm-pill k-{{ engagement.status_key }}" title="{{ engagement.status_label }}">{{ engagement.status_label }}</span>
+                        {% if profile.career_goal %}<span class="rm-tag"><span class="rm-dot k-{{ goal_key }}"></span>{{ profile.career_goal }}{% if target and target != profile.career_goal %}, {{ target }}{% endif %}</span>{% endif %}
+                        {% if profile.locality %}<span>{{ profile.locality }}</span>{% endif %}
+                        <span>Enrolled {{ profile.registration_date|date:"j M Y" }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="rm-head__actions">
+                {% if can_edit %}<a class="rm-btn rm-btn--secondary" href="{% url 'rm-edit-student' student.id %}">Edit details</a>{% endif %}
+                {% if present_today %}
+                    <span class="rm-btn rm-btn--secondary" aria-disabled="true" style="cursor: default; color: var(--rm-success-ink)">
+                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0z" clip-rule="evenodd"/></svg>
+                        Present today
+                    </span>
+                {% else %}
+                    <form method="post">{% csrf_token %}
+                        <input type="hidden" name="action" value="mark_present">
+                        <button class="rm-btn rm-btn--primary" type="submit">Mark present today</button>
+                    </form>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+
+    {% if moved_on %}
+        <div class="rm-notice rm-notice--good">
+            <span><b>Moved on: {{ outcome_label }}</b>{% if profile.outcome_date %} (recorded {{ profile.outcome_date|date:"j M Y" }}){% endif %}. {{ student.employee_first_name }} isn't counted as inactive or called any more.</span>
+            {% if can_follow_up %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="clear_outcome"><button class="rm-btn rm-btn--secondary rm-btn--sm" type="submit">They're still a current student</button></form>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <section class="rm-kpis" style="--rm-kpi-count: 4" aria-label="Visits">
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Last visit</span>
+            <div class="rm-kpi__value">{% if engagement.last_visit %}{% if engagement.days_since_visit == 0 %}Today{% elif engagement.days_since_visit == 1 %}Yesterday{% else %}{{ engagement.days_since_visit }}<span style="font-size: 16px; font-weight: 500"> days ago</span>{% endif %}{% else %}Never{% endif %}</div>
+            <div class="rm-kpi__note">{% if engagement.last_visit %}{{ engagement.last_visit|date:"l, j F Y" }}{% else %}No check-in recorded{% endif %}</div>
+        </div>
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Visits this month</span>
+            <div class="rm-kpi__value">{{ month_visits }}</div>
+            <div class="rm-kpi__note">Since the 1st</div>
+        </div>
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Last 12 months</span>
+            <div class="rm-kpi__value">{{ calendar.count }}</div>
+            <div class="rm-kpi__note">Since {{ calendar.since|date:"j M Y" }}</div>
+        </div>
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">All visits</span>
+            <div class="rm-kpi__value">{{ total_visits }}</div>
+            <div class="rm-kpi__note">Since enrolling</div>
+        </div>
+    </section>
+
+    {% if needs_followup and can_follow_up %}{% include "rm/partials/followup_card.html" %}{% endif %}
+
+    <section class="rm-card">
+        <div class="rm-card__head">
+            <div>
+                <h2 class="rm-card__title">Visit calendar</h2>
+                <p class="rm-card__meta">Each square is a day; filled squares are visits. Today is outlined.</p>
+            </div>
+        </div>
+        <div class="rm-cal" role="img" aria-label="{{ calendar.count }} visits in the last 12 months">
+            <div class="rm-cal__days" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span></span></div>
+            {% for week in calendar.weeks %}
+                <div class="rm-cal__week">
+                    <span class="rm-cal__month">{{ week.month }}</span>
+                    {% for day in week.cells %}<i class="{% if day.visited %}is-visit{% endif %}{% if day.today %} is-today{% endif %}{% if day.future %} is-future{% endif %}" data-tip-title="{{ day.date|date:'D j M Y' }}" data-tip="{% if day.visited %}Visited{% else %}No visit{% endif %}"></i>{% endfor %}
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <div class="rm-grid rm-grid--main">
+        <section class="rm-card">
+            <div class="rm-card__head"><h2 class="rm-card__title">About</h2></div>
+            <dl class="rm-facts">
+                <div><dt>Phone</dt><dd><a class="rm-tel" href="tel:{{ student.phone }}">{{ student.phone|default:"—" }}</a></dd></div>
+                <div><dt>Guardian</dt><dd>{{ profile.guardian_name|default:"—" }}{% if profile.guardian_phone %}, <a class="rm-tel" href="tel:{{ profile.guardian_phone }}">{{ profile.guardian_phone }}</a>{% endif %}</dd></div>
+                <div><dt>Gender</dt><dd>{{ gender_label|default:"—" }}</dd></div>
+                <div><dt>Date of birth</dt><dd>{% if student.dob %}{{ student.dob|date:"j M Y" }} ({{ age_group }}){% else %}—{% endif %}</dd></div>
+                <div><dt>Area</dt><dd>{{ profile.locality|default:"—" }}</dd></div>
+                <div><dt>Qualification</dt><dd>{{ student.qualification|default:"—" }}</dd></div>
+                <div><dt>Preparing for</dt><dd>{% if target %}{{ target }}{% elif profile.career_goal %}{{ profile.career_goal }}{% else %}—{% endif %}{% if profile.target_year %}, {{ profile.target_year }}{% endif %}</dd></div>
+                <div><dt>Preparation stage</dt><dd>{{ prep_label|default:"—" }}</dd></div>
+                <div><dt>School / college</dt><dd>{{ profile.institution|default:"—" }}</dd></div>
+                <div class="rm-facts--wide"><dt>Why they joined RM</dt><dd>{{ purpose_label|default:"—" }}{% if profile.purpose_other %}: {{ profile.purpose_other }}{% endif %}</dd></div>
+                <div class="rm-facts--wide"><dt>Support they need</dt><dd>{% if profile.requirements %}{{ profile.requirements|join:", " }}{% else %}—{% endif %}{% if profile.requirements_other %} ({{ profile.requirements_other }}){% endif %}</dd></div>
+                <div class="rm-facts--wide"><dt>What they expect from RM</dt><dd>{{ profile.expectations|default:"—" }}</dd></div>
+                {% if student.address %}<div class="rm-facts--wide"><dt>Village / address</dt><dd>{{ student.address }}</dd></div>{% endif %}
+                {% if profile.notes %}<div class="rm-facts--wide"><dt>Notes</dt><dd>{{ profile.notes|linebreaksbr }}</dd></div>{% endif %}
+            </dl>
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Recent visits</h2>
+                    <p class="rm-card__meta">{{ total_visits }} in total</p>
+                </div>
+            </div>
+            <ul class="rm-list">
+                {% for visit in visits %}
+                    <li class="rm-list__item">
+                        <span>{{ visit.attendance_date|date:"D, j M Y" }}<span class="rm-person__sub">{% if visit.attendance_clock_in %}{{ visit.attendance_clock_in|time:"g:i A" }}{% else %}From a register{% endif %}{% if visit.created_by %}, marked by {{ visit.created_by.get_username }}{% endif %}</span></span>
+                        {% if can_follow_up or visit.attendance_date == engagement.last_visit and present_today %}<a class="rm-card__link" href="{% url 'rm-remove-visit' visit.id %}" style="font-weight: 500">Remove</a>{% endif %}
+                    </li>
+                {% empty %}
+                    <li class="rm-empty"><b>No visits yet.</b>They'll appear here once {{ student.employee_first_name }} checks in.</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </div>
+
+    {% if not needs_followup and can_follow_up %}{% include "rm/partials/followup_card.html" %}{% endif %}
+</div>
+{% endblock %}

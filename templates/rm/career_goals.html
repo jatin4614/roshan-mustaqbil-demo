@@ -1,1 +1,84 @@
-{% extends "index.html" %}{% block content %}<div class="oh-wrapper rm-shell space-y-5">{% include "rm/dashboard_header.html" with title="Career Goals" subtitle="Career aspirations are demographic information, not corporate performance scores." %}<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">{% for item in charts.goals %}{% include "rm/kpi.html" with label=item.label value=item.count %}{% endfor %}</div><div class="grid gap-5 lg:grid-cols-2">{% include "rm/chart_card.html" with title="Career Goal Distribution" data=charts.goals %}{% include "rm/chart_card.html" with title="Engagement across the Centre" data=charts.engagement %}{% include "rm/chart_card.html" with title="Aspirants by Age Group" data=charts.age %}{% include "rm/chart_card.html" with title="Aspirants by Gender" data=charts.gender %}</div><section class="rm-card overflow-hidden rounded-2xl bg-white p-6"><p class="text-xs font-bold uppercase tracking-wider text-teal-700">Directory</p><h2 class="mt-1 text-lg font-bold">Career Goal Directory</h2><table class="mt-4 w-full text-left text-sm"><thead class="text-slate-500"><tr><th class="py-2">Student</th><th>Registration</th><th>Goal</th><th>Defence Entry</th><th>Engagement</th></tr></thead><tbody>{% for row in engagement_rows %}<tr class="border-t border-slate-100"><td class="py-3"><a class="font-semibold text-teal-700" href="{% url 'rm-student-profile' row.student.id %}">{{ row.student.get_full_name }}</a></td><td>{{ row.student.badge_id }}</td><td>{{ row.student.rm_profile.career_goal|default:"—" }}</td><td>{{ row.student.rm_profile.defence_entry|default:"—" }}</td><td>{{ row.status }}</td></tr>{% endfor %}</tbody></table></section></div>{% endblock %}
+{% extends "index.html" %}
+{% block title %}Career goals | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page">
+    <header class="rm-head">
+        <div>
+            <h1 class="rm-head__title">Career goals</h1>
+            <p class="rm-head__sub">What the {{ total }} current students are preparing for, how far along they are, and which groups keep coming.</p>
+        </div>
+        <div class="rm-head__actions">
+            <a class="rm-btn rm-btn--secondary" href="{% url 'rm-students' %}">Browse students</a>
+        </div>
+    </header>
+
+    <section class="rm-card">
+        <div class="rm-card__head">
+            <div>
+                <h2 class="rm-card__title">Each goal group at a glance</h2>
+                <p class="rm-card__meta">How many students, and how recently they've come</p>
+            </div>
+        </div>
+        <ul class="rm-legend rm-legend--inline" style="margin-bottom: 16px">
+            {% for item in engagement_legend %}<li><span class="rm-swatch k-{{ item.key }}"></span>{{ item.label }}</li>{% endfor %}
+        </ul>
+        <ul class="rm-stack rm-stack--goals">
+            {% for card in cards %}
+                <li class="rm-stack__row">
+                    <a class="rm-stack__label" href="{{ card.url }}"><span class="rm-dot k-{{ card.key }}"></span>{{ card.label }}</a>
+                    <div class="rm-split rm-split--labelled" role="img" aria-label="{{ card.label }}: {% for part in card.split.parts %}{{ part.label }} {{ part.count }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+                        {% for part in card.split.parts %}<span class="k-{{ part.key }}" style="flex: {{ part.width }} 1 0" data-tip-title="{{ card.label }}: {{ part.label }}" data-tip="{{ part.count }} students, {{ part.share }}">{% if part.show_share %}{{ part.share }}{% endif %}</span>{% empty %}<span class="k-muted" style="flex: 1"></span>{% endfor %}
+                    </div>
+                    <span class="rm-stack__total"><b style="color: var(--rm-ink)">{{ card.count }}</b> students, {{ card.active_rate }} active</span>
+                </li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Defence entry schemes</h2>
+                    <p class="rm-card__meta">Share of the {{ defence_total }} Defence aspirants</p>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=entries empty="No Defence aspirants yet." %}
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Other exams they're preparing for</h2>
+                    <p class="rm-card__meta">Civil services and other goals; {{ exam_total }} students</p>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=exams empty="No exams recorded yet." %}
+        </section>
+    </div>
+
+    <div class="rm-grid rm-grid--main">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">How far along each group is</h2>
+                    <p class="rm-card__meta">Preparation stage, from just starting (lightest) to awaiting a result (darkest)</p>
+                </div>
+            </div>
+            {% include "rm/charts/stacked.html" with rows=stages legend=stage_legend %}
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Exams coming up</h2>
+                    <p class="rm-card__meta">Students by exam year{% if no_year %}; {{ no_year }} haven't said{% endif %}</p>
+                </div>
+            </div>
+            {% if years %}
+                {% include "rm/charts/columns.html" with chart=years cls="rm-cols--short rm-cols--labels" caption="Students by exam year" %}
+            {% else %}
+                <div class="rm-empty"><b>No exam years recorded yet.</b>Add it when enrolling or editing a student.</div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

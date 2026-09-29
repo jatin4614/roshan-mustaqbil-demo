@@ -96,7 +96,7 @@ PY
 
   python manage.py migrate --noinput
   if [ "${RM_SEED_DEMO_DATA:-0}" = "1" ]; then
-    python manage.py bootstrap_roshan_mustaqbil_demo
+    python manage.py bootstrap_roshan_mustaqbil_demo --demo-staff
     python manage.py seed_youth_centre_demo
   fi
   python manage.py collectstatic --noinput --clear
@@ -121,7 +121,7 @@ fi
 python manage.py migrate --noinput
 
 if [ "${RM_SEED_DEMO_DATA:-0}" = "1" ]; then
-  python manage.py bootstrap_roshan_mustaqbil_demo
+  python manage.py bootstrap_roshan_mustaqbil_demo --demo-staff
   python manage.py seed_youth_centre_demo
 fi
 

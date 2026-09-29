@@ -225,13 +225,16 @@
 </script>
 <script src="{% static '/jquery/ajax.js' %}"></script>
 <script src="{% static '/jquery/jquery.min.js' %}"></script>
+{% if not rm_page %}
+{# Centre (base.rm_*) pages draw their own charts and need none of these. #}
 <script src="{% static '/jquery/jqueryui.js' %}"></script>
 <script src="{% static '/base/toggleColumn.js' %}"></script>
 <script src="{% static '/build/js/orgChart.js' %}"></script>
 <script src="{% static 'build/js/driver.js' %}"></script>
 <script src="{% static 'build/js/clearFilter.js' %}"></script>
-<script defer src="{% static '/cdn/alpine/alpine.min.js' %}"></script>
 <script src="{% static 'cdn/chartJs/scripts/chart.js' %}"></script>
+{% endif %}
+<script defer src="{% static '/cdn/alpine/alpine.min.js' %}"></script>
 
 {% block header_scripts %}
 {% endblock header_scripts %}

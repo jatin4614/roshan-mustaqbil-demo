@@ -8,7 +8,7 @@ services:
     dockerContext: .
     healthCheckPath: /health/
     initialDeployHook: >-
-      python manage.py bootstrap_roshan_mustaqbil_demo &&
+      python manage.py bootstrap_roshan_mustaqbil_demo --demo-staff &&
       python manage.py seed_youth_centre_demo
     envVars:
       - key: DEBUG
@@ -21,6 +21,8 @@ services:
         value: "True"
       - key: RENDER_ASYNC_RELEASE_TASKS
         value: "1"
+      # Demo data: set to "0" (and run `manage.py seed_youth_centre_demo
+      # --remove`) before entering real students.
       - key: RM_SEED_DEMO_DATA
         value: "1"
       - key: GUNICORN_WORKERS
@@ -42,8 +44,10 @@ services:
         generateValue: true
       - key: DEMO_ADMIN_USERNAME
         value: admin
+      # Not stored in the repository: Render asks for it when the
+      # Blueprint is created.
       - key: DEMO_ADMIN_PASSWORD
-        value: "Admin123"
+        sync: false
 databases:
   - name: roshan-mustaqbil-db
     plan: free

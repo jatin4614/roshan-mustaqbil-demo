@@ -1,0 +1,36 @@
+{% load l10n %}{% comment %}
+  Column chart from base.rm_charts.columns. Hover a column for its value;
+  the hidden table gives screen readers every value.
+{% endcomment %}
+<div class="rm-cols {{ cls }}">
+    {% if chart.average or now_label %}
+        <div class="rm-cols__key" aria-hidden="true">
+            {% if now_label %}<span><i class="is-now"></i>{{ now_label }}</span>{% endif %}
+            {% if chart.average %}<span><i class="is-avg"></i>Average open day <b>{{ chart.average.value }}</b></span>{% endif %}
+        </div>
+    {% endif %}
+    <div class="rm-cols__plot">
+        <div class="rm-cols__grid" aria-hidden="true">
+            {% for tick in chart.ticks %}
+                <div class="rm-cols__tick{% if not tick.value %} rm-cols__tick--base{% endif %}" style="bottom: {{ tick.pos|unlocalize }}%"><span>{{ tick.value }}</span></div>
+            {% endfor %}
+        </div>
+        {% if chart.average %}
+            <div class="rm-cols__avg" style="bottom: {{ chart.average.pos|unlocalize }}%" aria-hidden="true"></div>
+        {% endif %}
+        <div class="rm-cols__bars"{% if not linked %} aria-hidden="true"{% endif %}>
+            {% for col in chart.items %}
+                {% if col.url %}<a href="{{ col.url }}"{% else %}<div{% endif %} class="rm-col{% if col.current %} rm-col--current{% endif %}{% if col.closed %} rm-col--closed{% endif %}" data-tip-title="{{ col.tip }}" data-tip="{{ col.tip_value }}">
+                    <div class="rm-col__bar" style="height: {{ col.height|unlocalize }}%"></div>
+                {% if col.url %}</a>{% else %}</div>{% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    <div class="rm-cols__x" aria-hidden="true">
+        {% for col in chart.items %}<span>{{ col.label }}</span>{% endfor %}
+    </div>
+    <table class="rm-sr">
+        <caption>{{ caption }}</caption>
+        {% for col in chart.items %}<tr><th scope="row">{{ col.tip }}</th><td>{{ col.value }}</td></tr>{% endfor %}
+    </table>
+</div>

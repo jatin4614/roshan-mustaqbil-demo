@@ -772,8 +772,9 @@ class Employee(models.Model):
             super().save(*args, **kwargs)
         employee = self
 
-        if employee.employee_user_id is None:
-            # Create user if no corresponding user exists
+        if employee.employee_user_id is None and not getattr(self, "skip_user_creation", False):
+            # Create user if no corresponding user exists. Roshan Mustaqbil
+            # students set skip_user_creation: they are records, not users.
             username = self.email
             password = str(self.phone)
 
@@ -814,16 +815,38 @@ class StudentProfile(models.Model):
     DEFENCE_ENTRIES = (
         ("NDA", "NDA"),
         ("TES", "TES"),
-        ("Other Entry Scheme", "Other Entry Scheme"),
+        ("CDS", "CDS"),
+        ("AFCAT", "AFCAT"),
+        ("Agniveer", "Agniveer"),
+        ("Territorial Army / JKLI", "Territorial Army / JKLI"),
+        ("Other Entry Scheme", "Other entry scheme"),
+    )
+    # The exam a non-Defence, non-NEET student is preparing for.
+    TARGET_EXAMS = (
+        ("UPSC Civil Services", "UPSC Civil Services"),
+        ("JKPSC (JKAS)", "JKPSC (JKAS)"),
+        ("JKSSB", "JKSSB"),
+        ("JK Police", "JK Police"),
+        ("SSC", "SSC"),
+        ("JEE", "JEE (engineering)"),
+        ("Banking", "Banking"),
+        ("Teaching", "Teaching"),
+        ("Nursing / Paramedical", "Nursing / paramedical"),
+        ("Skill / Vocational", "Skill / vocational"),
+        ("Other", "Other"),
+    )
+    PREP_STAGES = (
+        ("Just starting", "Just starting"),
+        ("Building basics", "Building basics"),
+        ("Regular practice & mock tests", "Regular practice & mock tests"),
+        ("Appeared before", "Appeared before, trying again"),
+        ("Awaiting result", "Awaiting result"),
     )
     PURPOSES = (
-        ("Self Study", "Self Study"),
-        ("Competitive Exam Preparation", "Competitive Exam Preparation"),
-        ("Career Guidance", "Career Guidance"),
-        ("Access to Study Material", "Access to Study Material"),
-        ("Internet / Digital Resources", "Internet / Digital Resources"),
-        ("Counselling / Mentorship", "Counselling / Mentorship"),
-        ("Skill Development", "Skill Development"),
+        ("Competitive Exam Preparation", "Competitive exam preparation"),
+        ("Self Study", "Self study"),
+        ("Career Guidance", "Career guidance"),
+        ("Skill Development", "Skill development"),
         ("Other", "Other"),
     )
     REQUIREMENT_CHOICES = (
@@ -831,24 +854,55 @@ class StudentProfile(models.Model):
         "Career Guidance", "Mentorship", "Mock Tests", "Exam Information",
         "Counselling", "Skill Training", "Other",
     )
-    CURRENT_STATUSES = (
-        ("Studying at School / College", "Studying at School / College"),
-        ("Preparing from Home", "Preparing from Home"),
-        ("Preparing at Another Institute", "Preparing at Another Institute"),
-        ("Employed", "Employed"),
-        ("Joined Armed Forces / Selected", "Joined Armed Forces / Selected"),
-        ("Joined Professional Course", "Joined Professional Course"),
-        ("Moved / Relocated", "Moved / Relocated"),
-        ("No Longer Interested", "No Longer Interested"),
-        ("Unable to Contact", "Unable to Contact"),
+    # Tehsils of Kupwara district, for "where do our students come from".
+    LOCALITIES = (
+        ("Kupwara", "Kupwara"), ("Handwara", "Handwara"), ("Trehgam", "Trehgam"),
+        ("Kralpora", "Kralpora"), ("Lolab", "Lolab"), ("Sogam", "Sogam"),
+        ("Villgam", "Villgam"), ("Drugmulla", "Drugmulla"), ("Kalaroos", "Kalaroos"),
+        ("Karnah", "Karnah"), ("Machil", "Machil"), ("Langate", "Langate"),
+        ("Qalamabad", "Qalamabad"), ("Rajwar", "Rajwar"), ("Zachaldara", "Zachaldara"),
+        ("Magam", "Magam"), ("Chowkibal", "Chowkibal"), ("Keran", "Keran"),
         ("Other", "Other"),
     )
+    CURRENT_STATUSES = (
+        ("Studying at School / College", "Studying at school / college"),
+        ("Preparing from Home", "Preparing from home"),
+        ("Preparing at Another Institute", "Preparing at another institute"),
+        ("Plans to Return", "Plans to come back"),
+        ("Employed", "Employed"),
+        ("Joined Armed Forces / Selected", "Selected (armed forces / service)"),
+        ("Joined Professional Course", "Joined a professional course"),
+        ("Moved / Relocated", "Moved away"),
+        ("No Longer Interested", "No longer interested"),
+        ("Unable to Contact", "Couldn't reach them"),
+        ("Wrong Number", "Wrong number"),
+        ("Other", "Other"),
+    )
+    # A student with an outcome has moved on: they leave the centre's
+    # "active base" instead of counting as inactive for ever.
+    OUTCOMES = (
+        ("Selected", "Selected"),
+        ("Joined Professional Course", "Joined a professional course"),
+        ("Moved Away", "Moved away"),
+        ("Closed", "No longer interested"),
+    )
+    STATUS_OUTCOMES = {
+        "Joined Armed Forces / Selected": "Selected",
+        "Joined Professional Course": "Joined Professional Course",
+        "Moved / Relocated": "Moved Away",
+        "No Longer Interested": "Closed",
+    }
 
     employee = models.OneToOneField(Employee, on_delete=models.CASCADE, related_name="rm_profile")
     purpose_of_rm = models.CharField(max_length=80, blank=True, choices=PURPOSES)
     purpose_other = models.CharField(max_length=200, blank=True)
     career_goal = models.CharField(max_length=40, blank=True, choices=CAREER_GOALS)
     defence_entry = models.CharField(max_length=40, blank=True, choices=DEFENCE_ENTRIES)
+    target_exam = models.CharField(max_length=40, blank=True, choices=TARGET_EXAMS)
+    goal_detail = models.CharField(max_length=200, blank=True)
+    prep_stage = models.CharField(max_length=40, blank=True, choices=PREP_STAGES)
+    target_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    locality = models.CharField(max_length=40, blank=True, choices=LOCALITIES)
     expectations = models.TextField(blank=True)
     requirements = models.JSONField(default=list, blank=True)
     requirements_other = models.CharField(max_length=200, blank=True)
@@ -857,19 +911,47 @@ class StudentProfile(models.Model):
     guardian_name = models.CharField(max_length=200, blank=True)
     guardian_phone = models.CharField(max_length=25, blank=True)
     notes = models.TextField(blank=True)
+    # The latest follow-up call, kept here for filtering; the full history is
+    # in StudentFollowUp.
     current_status = models.CharField(max_length=80, blank=True, choices=CURRENT_STATUSES)
     inactivity_reason = models.TextField(blank=True)
     last_followup_date = models.DateField(null=True, blank=True)
     followup_notes = models.TextField(blank=True)
+    next_call_date = models.DateField(null=True, blank=True)
+    outcome = models.CharField(max_length=40, blank=True, choices=OUTCOMES)
+    outcome_date = models.DateField(null=True, blank=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["career_goal"], name="rm_profile_goal_idx"),
             models.Index(fields=["registration_date"], name="rm_profile_reg_idx"),
+            models.Index(fields=["outcome"], name="rm_profile_outcome_idx"),
         ]
 
     def __str__(self):
         return f"RM profile: {self.employee.get_full_name()}"
+
+
+class StudentFollowUp(models.Model):
+    """One phone call (or home visit) to a student who has stopped coming."""
+
+    student = models.ForeignKey(StudentProfile, on_delete=models.CASCADE, related_name="followups")
+    called_on = models.DateField(default=date.today)
+    result = models.CharField(max_length=80, choices=StudentProfile.CURRENT_STATUSES)
+    reason = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+    next_call_date = models.DateField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        "horilla_auth.HorillaUser", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-called_on", "-created_at")
+        indexes = [models.Index(fields=["called_on"], name="rm_followup_date_idx")]
+
+    def __str__(self):
+        return f"Follow-up {self.called_on}: {self.result}"
 
 
 class EmployeeTag(HorillaModel):

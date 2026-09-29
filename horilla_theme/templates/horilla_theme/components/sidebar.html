@@ -570,7 +570,7 @@
             <div class="flex items-center gap-2 min-w-0 flex-1">
                 {% if request.session.selected_company_instance %}
                     <img
-                        src="/static/images/brand/roshan-mustaqbil.jpeg"
+                        src="/static/images/brand/rm-emblem-96.png"
                         class="oh-sidebar-label w-9 h-9 rounded-xl flex-shrink-0 object-cover"
                         title="{{ request.session.selected_company_instance.company }}"
                         alt="{{ request.session.selected_company_instance.company }}"
@@ -579,14 +579,14 @@
                         <span
                             class="oh-sidebar__company-title truncate"
                             style="font-size: 13px"
-                        >{{ request.session.selected_company_instance.company }}.</span>
+                        >{{ request.session.selected_company_instance.company }}{% if not youth_centre_mode %}.{% endif %}</span>
                         <a href="#" class="oh-sidebar__company-link truncate" style="font-size: 10px">
-                            {% trans request.session.selected_company_instance.text %}
+                            {% if youth_centre_mode %}{% trans "Kupwara" %}{% else %}{% trans request.session.selected_company_instance.text %}{% endif %}
                         </a>
                     </div>
                 {% else %}
                     <img
-                        src="/static/images/brand/roshan-mustaqbil.jpeg"
+                        src="/static/images/brand/rm-emblem-96.png"
                         alt="Roshan Mustaqbil"
                         class="oh-sidebar-label w-7 h-7 rounded-full flex-shrink-0"
                     >
@@ -689,11 +689,13 @@
             answers the question without anyone having to ask.
             Collapses to just the number when the sidebar is unpinned.
         {% endcomment %}
+        {% if not youth_centre_mode %}
         <div class="sidebar-version px-4 pt-3 pb-6 border-t border-t-dark-50 text-[11px] leading-none text-[#999] select-text"
              title="{% trans 'Application version' %} {{ horilla_version }}">
             <span class="sidebar-version__label">{% trans "Version" %}</span>
             <span class="font-medium">{{ horilla_version }}</span>
         </div>
+        {% endif %}
     </div>
     <!-- Flyout panel: populated and positioned by JS on hover -->
     <div id="sidebarFlyout">

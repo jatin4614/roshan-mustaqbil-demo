@@ -1,0 +1,27 @@
+{% extends "index.html" %}
+{% block title %}Remove a visit | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page rm-page--narrow">
+    <header class="rm-head">
+        <div>
+            <a class="rm-back" href="{{ back }}">‹ Back</a>
+            <h1 class="rm-head__title">Remove this visit?</h1>
+            <p class="rm-head__sub">Use this when a student was marked present by mistake. It can't be undone, but you can mark them again.</p>
+        </div>
+    </header>
+    <section class="rm-card">
+        <dl class="rm-facts">
+            <div><dt>Student</dt><dd>{{ record.employee_id.get_full_name }} ({{ record.employee_id.badge_id }})</dd></div>
+            <div><dt>Date</dt><dd>{{ record.attendance_date|date:"l, j F Y" }}</dd></div>
+            <div><dt>Checked in</dt><dd>{{ record.attendance_clock_in|time:"g:i A"|default:"From a register" }}</dd></div>
+            <div><dt>Marked by</dt><dd>{% if record.created_by %}{{ record.created_by.get_username }}{% else %}—{% endif %}</dd></div>
+        </dl>
+        <form method="post" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ back }}">
+            <a class="rm-btn rm-btn--secondary" href="{{ back }}">Keep it</a>
+            <button class="rm-btn rm-btn--primary" type="submit" style="background: var(--rm-danger)">Remove visit</button>
+        </form>
+    </section>
+</div>
+{% endblock %}

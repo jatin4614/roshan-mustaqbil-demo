@@ -1,0 +1,9 @@
+{% load l10n %}
+<div class="rm-split" role="img" aria-label="{% for part in chart.parts %}{{ part.label }} {{ part.count }} ({{ part.share }}){% if not forloop.last %}, {% endif %}{% endfor %}">
+    {% for part in chart.parts %}<span class="k-{{ part.key }}" style="flex: {{ part.width|unlocalize }} 1 0" data-tip-title="{{ part.label }}" data-tip="{{ part.count }} students · {{ part.share }}"></span>{% endfor %}
+</div>
+<ul class="rm-legend rm-legend--inline" style="margin-top: 12px">
+    {% for part in chart.parts %}
+        <li><span class="rm-swatch k-{{ part.key }}"></span>{{ part.label }}&nbsp;<b class="rm-num">{{ part.count }}</b><span class="rm-muted">{{ part.share }}</span></li>
+    {% endfor %}
+</ul>

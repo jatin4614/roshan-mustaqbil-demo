@@ -1,13 +1,31 @@
-# Render demo deployment
+# Render deployment
 
-This repository includes `render.yaml` for a fresh Roshan Mustaqbil demo:
+This repository includes `render.yaml` for a Roshan Mustaqbil deployment:
 
-1. Create a new GitHub repository and push this branch to it. Do not commit `.env`, `media/`, `TestDB.sqlite3`, or `.venv`.
-2. In Render, select **New +** > **Blueprint**, connect the GitHub repository, and select `render.yaml`.
-3. Set `DEMO_ADMIN_PASSWORD` to the password you want for the administrator (for the requested demo, use `Admin123`).
-4. Create the Blueprint and wait for the web service and PostgreSQL database to become available.
-5. Open the generated `onrender.com` URL and sign in as `admin` with the chosen password.
+1. Push this branch to a GitHub repository. Do not commit `.env`, `media/`,
+   `TestDB.sqlite3` or `.venv`.
+2. In Render, select **New +** > **Blueprint**, connect the repository and
+   select `render.yaml`.
+3. Render asks for `DEMO_ADMIN_PASSWORD`: the password for the `admin`
+   account (and, in a demo, the `desk` and `coordinator` accounts). It is not
+   stored in the repository.
+4. Create the Blueprint and wait for the web service and database.
+5. Open the `onrender.com` URL and sign in as `admin`.
 
-The first deployment opens a temporary setup listener while database migrations run, which keeps a free Render web service alive during initialization. The one-time deployment hook then creates the Roshan Mustaqbil administrator and seeds the 15-student demo dataset. Subsequent deploys retain the database and do not reset administrator credentials or student updates.
+The first deployment creates the administrator, the three staff roles and
+the demo data (960 students with visits and follow-up calls). Later starts
+only add the day's check-ins so far; they never rewrite changes made in the
+app.
 
-Render free services can sleep after inactivity and may take a short time to wake up. Use a paid Render web-service plan for a no-sleep senior-demo link.
+## Going live with real students
+
+1. Set `RM_SEED_DEMO_DATA` to `0` in the Render dashboard.
+2. Remove the demo data: `python manage.py seed_youth_centre_demo --remove`
+   (Render shell).
+3. Sign in as `admin`, open **Staff accounts** (profile menu) and switch off
+   the `desk` and `coordinator` demo accounts. Add real staff with their roles.
+4. Import the existing register from **Students > Import from a spreadsheet**.
+
+Free Render services sleep after inactivity and take a while to wake up, and
+free databases are time-limited. Use paid plans for day-to-day use at the
+centre.
