@@ -18,7 +18,7 @@
             <div class="rm-card__head">
                 <div>
                     <h2 class="rm-card__title">Check before importing: {{ preview.file }}</h2>
-                    <p class="rm-card__meta"><b>{{ preview.new }}</b> will be added, {{ preview.exists }} are already here and will be skipped{% if preview.errors %}, and <b>{{ preview.errors }}</b> need fixing in the file{% endif %}.</p>
+                    <p class="rm-card__meta"><b>{{ preview.new }}</b> will be added, {{ preview.exists }} {% if preview.exists == 1 %}is{% else %}are{% endif %} already here and will be skipped{% if preview.errors %}, and <b>{{ preview.errors }}</b> {% if preview.errors == 1 %}needs{% else %}need{% endif %} fixing in the file{% endif %}.</p>
                 </div>
             </div>
             <div class="rm-summary" style="border-top: 1px solid var(--rm-line)">
@@ -85,12 +85,13 @@
                 <div class="rm-card__head"><h2 class="rm-card__title">Columns</h2></div>
                 {% if kind == "students" %}
                     <p class="rm-card__meta" style="margin-top: 0"><span class="rm-code">full_name</span>, <span class="rm-code">phone</span> and <span class="rm-code">enrollment_date</span> are required. Students enroll in person, so each one is recorded as present on their enrollment date. Dates can be 2024-05-31 or 31-05-2024.</p>
+                    <p class="rm-card__meta">Import their past attendance too (the <b>Past attendance</b> tab): without it, students from an older register show as having come only on the day they enrolled.</p>
                     <p style="line-height: 2">{% for column in student_columns %}<span class="rm-code">{{ column }}</span> {% endfor %}</p>
                     <p class="rm-card__meta">Career goal: {{ goals|join:", " }}. Anything else is kept as "Other" with your wording.</p>
                     <p class="rm-card__meta">Area: {{ areas|join:", " }}.</p>
                     <p class="rm-card__meta">Support needed: separate items with semicolons, for example “Study Space; Mock Tests”.</p>
                 {% else %}
-                    <p class="rm-card__meta" style="margin-top: 0">Give <span class="rm-code">registration_number</span> or <span class="rm-code">phone</span>, and the <span class="rm-code">date</span>. <span class="rm-code">time</span> is optional.</p>
+                    <p class="rm-card__meta" style="margin-top: 0">Give <span class="rm-code">registration_number</span> or <span class="rm-code">phone</span>, and the <span class="rm-code">date</span>. <span class="rm-code">time</span> is optional. Visits dated before a student's enrollment date are flagged: a student's first visit is the day they enrolled.</p>
                     <p style="line-height: 2">{% for column in visit_columns %}<span class="rm-code">{{ column }}</span> {% endfor %}</p>
                 {% endif %}
             </section>

@@ -43,6 +43,8 @@ REDIS_URL = env("REDIS_URL", default=None)
 # Blueprint deployment to accept its generated HTTPS origin safely.
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
 if RENDER_EXTERNAL_HOSTNAME:
+    if ALLOWED_HOSTS == ["*"]:
+        ALLOWED_HOSTS = []  # the local default; on Render, trust only its hostname
     if RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
         ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
     render_origin = f"https://{RENDER_EXTERNAL_HOSTNAME}"

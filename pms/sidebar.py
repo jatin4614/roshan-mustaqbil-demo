@@ -76,8 +76,8 @@ SUBMENUS = [
 
 if settings.YOUTH_CENTRE_MODE:
     MENU = _("Career goals")
-    ACCESSIBILITY = "base.rm_access.sidebar_coordinator"
-    SUBMENUS = [{"menu": _("Career goals"), "redirect": reverse_lazy("youth-centre-goals"), "accessibility": "base.rm_access.sidebar_coordinator"}]
+    ACCESSIBILITY = "base.rm_access.sidebar_admin"
+    SUBMENUS = [{"menu": _("Career goals"), "redirect": reverse_lazy("youth-centre-goals"), "accessibility": "base.rm_access.sidebar_admin"}]
 
 
 def dashboard_accessibility(request, submenu, user_perms, *args, **kwargs):

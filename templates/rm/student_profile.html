@@ -3,7 +3,7 @@
 {% block content %}
 <div class="rm-page">
     <div>
-        {% if rm_role != "frontdesk" %}<a class="rm-back" href="{% url 'rm-students' %}">‹ All students</a>{% else %}<a class="rm-back" href="{% url 'youth-daily-attendance' %}">‹ Mark attendance</a>{% endif %}
+        <a class="rm-back" href="{% url 'rm-students' %}">‹ All students</a>
         <section class="rm-card rm-profile-head">
             <div class="rm-profile-head__who">
                 <span class="rm-avatar rm-avatar--lg k-{{ goal_key }}">{{ initials }}</span>
@@ -19,7 +19,7 @@
                 </div>
             </div>
             <div class="rm-head__actions">
-                {% if can_edit %}<a class="rm-btn rm-btn--secondary" href="{% url 'rm-edit-student' student.id %}">Edit details</a>{% endif %}
+                <a class="rm-btn rm-btn--secondary" href="{% url 'rm-edit-student' student.id %}">Edit details</a>
                 {% if present_today %}
                     <span class="rm-btn rm-btn--secondary" aria-disabled="true" style="cursor: default; color: var(--rm-success-ink)">
                         <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0z" clip-rule="evenodd"/></svg>
@@ -38,15 +38,13 @@
     {% if moved_on %}
         <div class="rm-notice rm-notice--good">
             <span><b>Moved on: {{ outcome_label }}</b>{% if profile.outcome_date %} (recorded {{ profile.outcome_date|date:"j M Y" }}){% endif %}. {{ student.employee_first_name }} isn't counted as inactive or called any more.</span>
-            {% if can_follow_up %}
-                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="clear_outcome"><button class="rm-btn rm-btn--secondary rm-btn--sm" type="submit">They're still a current student</button></form>
-            {% endif %}
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="clear_outcome"><button class="rm-btn rm-btn--secondary rm-btn--sm" type="submit">They're still a current student</button></form>
         </div>
     {% endif %}
 
     {% if no_return and not moved_on %}
         <div class="rm-notice">
-            <span><b>{{ no_return_label }}.</b> {{ student.employee_first_name }} enrolled on {{ profile.registration_date|date:"j M Y" }} and hasn't been back since. A call now is the best chance of bringing them back.</span>
+            <span><b>{{ no_return_label }}.</b> {{ student.employee_first_name }} enrolled on {{ profile.registration_date|date:"j M Y" }} and hasn't been back since.{% if profile.last_followup_date and profile.last_followup_date >= profile.registration_date %} Last called on {{ profile.last_followup_date|date:"j M Y" }}: {{ last_call_label|lower }}.{% endif %}{% if call_due %} A call now is the best chance of bringing them back.{% elif profile.next_call_date %} Next call planned for {{ profile.next_call_date|date:"j M Y" }}.{% endif %}</span>
         </div>
     {% endif %}
 
@@ -69,11 +67,11 @@
         <div class="rm-kpi">
             <span class="rm-kpi__label">All visits</span>
             <div class="rm-kpi__value">{{ total_visits }}</div>
-            <div class="rm-kpi__note">Including the day they enrolled</div>
+            <div class="rm-kpi__note">{% if has_enrollment_visit %}Including the day they enrolled{% else %}No enrollment day recorded{% endif %}</div>
         </div>
     </section>
 
-    {% if needs_followup and can_follow_up %}{% include "rm/partials/followup_card.html" %}{% endif %}
+    {% if needs_followup %}{% include "rm/partials/followup_card.html" %}{% endif %}
 
     <section class="rm-card">
         <div class="rm-card__head">
@@ -123,8 +121,8 @@
             <ul class="rm-list">
                 {% for visit in visits %}
                     <li class="rm-list__item">
-                        <span>{{ visit.attendance_date|date:"D, j M Y" }}<span class="rm-person__sub">{% if visit.request_description == enrollment_visit %}Enrolled{% if visit.attendance_clock_in %} at {{ visit.attendance_clock_in|time:"g:i A" }}{% endif %}{% elif visit.attendance_clock_in %}{{ visit.attendance_clock_in|time:"g:i A" }}{% else %}From a register{% endif %}{% if visit.created_by %}, marked by {{ visit.created_by.get_username }}{% endif %}</span></span>
-                        {% if can_follow_up or visit.attendance_date == engagement.last_visit and present_today %}<a class="rm-card__link" href="{% url 'rm-remove-visit' visit.id %}" style="font-weight: 500">Remove</a>{% endif %}
+                        <span>{{ visit.attendance_date|date:"D, j M Y" }}<span class="rm-person__sub">{% if visit.request_description == enrollment_visit %}Enrolled{% if visit.attendance_clock_in %} at {{ visit.attendance_clock_in|time:"g:i A" }}{% endif %}{% elif visit.attendance_clock_in %}{{ visit.attendance_clock_in|time:"g:i A" }}{% else %}From a register{% endif %}</span></span>
+                        {% if visit.request_description == enrollment_visit %}<span class="rm-tag">Enrolled</span>{% else %}<a class="rm-card__link" href="{% url 'rm-remove-visit' visit.id %}" style="font-weight: 500">Remove</a>{% endif %}
                     </li>
                 {% empty %}
                     <li class="rm-empty"><b>No visits recorded.</b>{{ student.employee_first_name }} enrolled on {{ profile.registration_date|date:"j M Y" }}.</li>
@@ -133,6 +131,6 @@
         </section>
     </div>
 
-    {% if not needs_followup and can_follow_up %}{% include "rm/partials/followup_card.html" %}{% endif %}
+    {% if not needs_followup %}{% include "rm/partials/followup_card.html" %}{% endif %}
 </div>
 {% endblock %}

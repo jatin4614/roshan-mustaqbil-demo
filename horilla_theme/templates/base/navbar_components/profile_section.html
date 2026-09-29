@@ -50,11 +50,6 @@
         <li>
             <a class="py-1.5 hover:text-primary-600 transition duration-300 text-[13px] flex w-full" href="{% url 'change-password' %}">{% trans "Change password" %}</a>
         </li>
-        {% if rm_role == "manager" %}
-            <li>
-                <a class="py-1.5 hover:text-primary-600 transition duration-300 text-[13px] flex w-full" href="{% url 'rm-staff' %}">{% trans "Staff accounts" %}</a>
-            </li>
-        {% endif %}
         <li>
             <a class="py-1.5 hover:text-primary-600 transition duration-300 text-[13px] flex w-full" href="{% url 'logout' %}">{% trans "Sign out" %}</a>
         </li>

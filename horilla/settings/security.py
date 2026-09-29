@@ -49,7 +49,7 @@ def validate_production_secrets(secret_key, allowed_hosts, db_init_password):
         )
 
     hosts = list(allowed_hosts or [])
-    if not hosts or hosts == ["*"] or set(hosts) == {"*"}:
+    if not hosts or "*" in hosts:
         errors.append(
             "ALLOWED_HOSTS must be set to your real hostnames in production "
             '(not "*" or empty).'

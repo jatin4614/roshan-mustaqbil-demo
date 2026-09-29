@@ -8,7 +8,7 @@
             <p class="rm-head__sub">Every recorded check-in. Students who don't come simply have no entry for that day.</p>
         </div>
         <div class="rm-head__actions">
-            {% if can_export %}<a class="rm-btn rm-btn--secondary" href="{{ export_url }}">Download CSV</a>{% endif %}
+            <a class="rm-btn rm-btn--secondary" href="{{ export_url }}">Download CSV</a>
             <a class="rm-btn rm-btn--primary" href="{% url 'youth-daily-attendance' %}">Mark attendance</a>
         </div>
     </header>
@@ -45,7 +45,7 @@
                         <th scope="col">Student</th>
                         <th scope="col">Checked in</th>
                         <th scope="col">Career goal</th>
-                        <th scope="col" class="rm-hide-sm">Marked by</th>
+                        <th scope="col" class="rm-hide-sm">Type</th>
                         <th scope="col"><span class="rm-sr">Actions</span></th>
                     </tr>
                 </thead>
@@ -66,8 +66,8 @@
                             </td>
                             <td class="rm-num" style="text-align: left">{{ row.record.attendance_clock_in|time:"g:i A"|default:"From a register" }}</td>
                             <td>{% if row.student.rm_profile.career_goal %}<span class="rm-tag"><span class="rm-dot k-{{ row.goal_key }}"></span>{{ row.student.rm_profile.career_goal }}</span>{% else %}<span class="rm-muted">Not recorded</span>{% endif %}</td>
-                            <td class="rm-hide-sm">{{ row.marked_by|default:"—" }}</td>
-                            <td style="text-align: right">{% if row.can_remove %}<a class="rm-card__link" style="font-weight: 500" href="{% url 'rm-remove-visit' row.record.id %}?next={{ here|urlencode }}">Remove</a>{% endif %}</td>
+                            <td class="rm-hide-sm">{% if row.is_enrollment %}<span class="rm-tag rm-tag--new">Enrolled</span>{% else %}{{ row.type }}{% endif %}</td>
+                            <td style="text-align: right">{% if not row.is_enrollment %}<a class="rm-card__link" style="font-weight: 500" href="{% url 'rm-remove-visit' row.record.id %}?next={{ here|urlencode }}">Remove</a>{% endif %}</td>
                         </tr>
                     {% empty %}
                         <tr><td colspan="5"><div class="rm-empty"><b>No visits match these filters.</b>Try a longer period or clear the search.</div></td></tr>

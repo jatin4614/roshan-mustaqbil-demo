@@ -6,8 +6,10 @@ centre. Running it again later only tops up visits for students who are
 still coming (and fills in the day so far); it never rewrites students,
 profiles or follow-up calls that staff may have changed.
 
-``--reset`` removes earlier demo students, their visits and calls first.
-``--remove`` removes them and stops, for going live with real data.
+``--reset`` removes earlier demo students, their visits and calls first,
+together with any students enrolled or imported in the app while the demo
+data was loaded (a rehearsal's walk-ins and sample imports).
+``--remove`` removes all of those and stops, for going live with real data.
 """
 
 import random
@@ -15,14 +17,18 @@ from datetime import time, timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.db.models import Max, ProtectedError, Q
+from django.db.models import Max, Min, Q
 from django.utils import timezone
 
-from attendance.models import Attendance, AttendanceActivity, AttendanceLateComeEarlyOut
-from base.rm import CALL_BACK_AFTER_DAYS, ENROLLMENT_VISIT
+from attendance.models import Attendance
+from base.models import EmployeeShiftDay
+from base.rm import CALL_BACK_AFTER_DAYS, ENROLLMENT_VISIT, REGULAR_VISIT, delete_students
 from employee.models import Employee, StudentFollowUp, StudentProfile
 
 DEMO_DOMAINS = ("@rm.demo", "@roshanmustaqbil.demo")
+# Students enrolled or imported in the app get this address.
+APP_DOMAIN = "@rm.local"
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
 MALE = ("Aadil", "Aamir", "Adnan", "Aijaz", "Arif", "Asif", "Bilal", "Danish", "Faisal", "Farhan", "Firdous", "Haris", "Irfan", "Ishfaq", "Javid", "Junaid", "Mudasir", "Mushtaq", "Nasir", "Owais", "Parvaiz", "Rayees", "Sajad", "Sameer", "Showkat", "Suhail", "Tanveer", "Tariq", "Umar", "Waseem", "Yasir", "Zahid", "Zubair", "Aqib", "Basit", "Mehraj", "Shahid", "Rizwan", "Imtiyaz", "Hilal")
 FEMALE = ("Aafreen", "Afshana", "Aiman", "Arifa", "Asma", "Bisma", "Heena", "Iqra", "Insha", "Mehvish", "Mehak", "Nadiya", "Nazia", "Nusrat", "Rafia", "Rubeena", "Rukhsana", "Sadaf", "Saima", "Shabnam", "Shazia", "Suhaila", "Tabassum", "Uzma", "Zainab", "Zoya", "Sana", "Mariya", "Tahira", "Rabia")
@@ -157,9 +163,15 @@ def requirements_for(rng, goal):
 
 
 def registration_date_for(rng, today):
-    # Registrations grew over two years: recent months are busier.
+    # Registrations grew over two years: recent months are busier. The
+    # centre is closed on Sundays, so nobody enrolls then.
     month_back = pick(rng, [(m, 26 - m * 0.7) for m in range(26)])
-    return today - timedelta(days=month_back * 30 + rng.randint(0, 29))
+    day = today - timedelta(days=month_back * 30 + rng.randint(0, 29))
+    return day - timedelta(days=1) if day.weekday() == 6 else day
+
+
+def enrolled_at(number):
+    return arrival_time(random.Random(f"enrolled-{number}"))
 
 
 def engagement_for(rng, registered_days_ago):
@@ -221,7 +233,7 @@ def visit_plan(number, status, registered, today):
     """Dates (and arrival times) this student visited, up to today. The first
     is always the day they enrolled, in person."""
     rng = random.Random(f"plan-{number}")
-    enrolled = (registered, arrival_time(random.Random(f"enrolled-{number}")))
+    enrolled = (registered, enrolled_at(number))
     if status == "once":
         return [enrolled]
     if status == "active":
@@ -283,19 +295,21 @@ class Command(BaseCommand):
         demo_filter = Q()
         for domain in DEMO_DOMAINS:
             demo_filter |= Q(email__endswith=domain)
-        demo_ids = list(Employee.objects.filter(demo_filter, rm_profile__isnull=False).values_list("id", flat=True))
-        visits = Attendance.objects.filter(employee_id__in=demo_ids)
-        removed = visits.count()
-        # HR-side records that older demo data attached to these visits.
-        AttendanceLateComeEarlyOut.objects.filter(attendance_id__in=visits).delete()
-        AttendanceActivity.objects.filter(employee_id__in=demo_ids).delete()
-        visits.delete()  # per-row delete signals also clear work records
-        StudentProfile.objects.filter(employee_id__in=demo_ids).delete()  # calls go with them
-        try:
-            Employee.objects.filter(id__in=demo_ids).delete()
-        except ProtectedError:
-            Employee.objects.filter(id__in=demo_ids).update(is_active=False)
-        self.stdout.write(f"Removed {len(demo_ids)} demo students and {removed} visits.")
+        demo = Employee.objects.filter(demo_filter, rm_profile__isnull=False)
+        demo_ids = list(demo.values_list("id", flat=True))
+        # Students enrolled or imported during a demo: added in the app after
+        # the demo data was loaded, so their records come after it (real
+        # students are entered after --remove).
+        loaded = demo.aggregate(first=Min("id"))["first"]
+        added = list(
+            Employee.objects.filter(email__endswith=APP_DOMAIN, rm_profile__isnull=False, id__gt=loaded)
+            .values_list("id", flat=True)
+        ) if loaded else []
+        students, visits = delete_students(demo_ids + added)
+        self.stdout.write(
+            f"Removed {len(demo_ids)} demo students, {len(added)} student{'s' if len(added) != 1 else ''} added during demos, "
+            f"and {visits} visits."
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -307,7 +321,9 @@ class Command(BaseCommand):
         count = options["count"]
         today = timezone.localdate()
         now = timezone.localtime().replace(tzinfo=None)
-        existing = {student.email: student for student in Employee.objects.filter(email__endswith="@rm.demo")}
+        existing = {student.email: student for student in Employee.objects.filter(email__endswith="@rm.demo", is_active=True)}
+        weekdays = {day.day: day for day in EmployeeShiftDay.objects.all()}
+        self.weekday = lambda day: weekdays.get(WEEKDAYS[day.weekday()])
         attendance = self._top_up(existing, today, now) if existing else []
 
         people, created, previous = {}, [], None
@@ -341,6 +357,9 @@ class Command(BaseCommand):
         for email, (number, rng, age, goal, qualification, tehsil, fields) in people.items():
             student = students[email]
             registered = registration_date_for(rng, today)
+            if registered == today and enrolled_at(number) > now.time():
+                # Hasn't walked in yet today: enrolled on the last open day.
+                registered -= timedelta(days=2 if today.weekday() == 0 else 1)
             status = engagement_for(rng, (today - registered).days)
             status_totals[status] += 1
             exam, detail = target_exam_for(rng, goal)
@@ -370,13 +389,9 @@ class Command(BaseCommand):
                     visits = sorted({**dict(visits), **extra}.items())
                     returned = True
             for day, arrived in visits:
-                if day == today and arrived > now.time():
+                if day == today and arrived > now.time() and day != registered:
                     continue  # not arrived yet
-                attendance.append(Attendance(
-                    employee_id=student, attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=arrived,
-                    attendance_worked_hour="00:00", minimum_hour="00:00",
-                    request_description=ENROLLMENT_VISIT if day == registered else "Roshan Mustaqbil visit",
-                ))
+                attendance.append(self._visit(student, day, arrived, ENROLLMENT_VISIT if day == registered else REGULAR_VISIT))
             if calls and returned:
                 profile.last_followup_date = calls[-1][0]  # called, then came back
             if calls and not returned:
@@ -409,23 +424,37 @@ class Command(BaseCommand):
             f"{after - before} new visits ({after} demo visits in total)."
         ))
 
+    def _visit(self, student, day, arrived, note):
+        return Attendance(
+            employee_id=student, attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=arrived,
+            attendance_worked_hour="00:00", minimum_hour="00:00", request_description=note, attendance_day=self.weekday(day),
+        )
+
     def _top_up(self, existing, today, now):
-        """Keep students who are still coming coming, up to the current time."""
+        """Keep students who are still coming coming, up to the current time.
+
+        Students who only came to enroll stay that way (the demo's "didn't
+        come back" numbers shouldn't drift), and a missing enrollment visit
+        is put back.
+        """
+        students = list(existing.values())
         last_visits = dict(
-            Attendance.objects.filter(employee_id__in=existing.values()).order_by().values("employee_id")
+            Attendance.objects.filter(employee_id__in=students).order_by().values("employee_id")
             .annotate(last=Max("attendance_date")).values_list("employee_id", "last")
         )
+        registered = dict(StudentProfile.objects.filter(employee__in=students).values_list("employee_id", "registration_date"))
+        enrolled = set(Attendance.objects.filter(employee_id__in=students, request_description=ENROLLMENT_VISIT).values_list("employee_id", flat=True))
         visits = []
         for email, student in existing.items():
-            last = last_visits.get(student.id)
-            if not last or (today - last).days >= 30 or last >= today:
-                continue
             number = int(email[3:7])
+            enrolled_on = registered.get(student.id)
+            if enrolled_on and enrolled_on <= today and student.id not in enrolled:
+                visits.append(self._visit(student, enrolled_on, enrolled_at(number), ENROLLMENT_VISIT))
+            last = last_visits.get(student.id)
+            if not last or (today - last).days >= 30 or last >= today or (enrolled_on and last <= enrolled_on):
+                continue
             for day, arrived in sorted(visits_between(number, last + timedelta(days=1), today, active_rate(number)).items()):
                 if day == today and arrived > now.time():
                     continue
-                visits.append(Attendance(
-                    employee_id=student, attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=arrived,
-                    attendance_worked_hour="00:00", minimum_hour="00:00", request_description="Roshan Mustaqbil visit",
-                ))
+                visits.append(self._visit(student, day, arrived, REGULAR_VISIT))
         return visits

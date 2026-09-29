@@ -1,4 +1,5 @@
 {% extends "index.html" %}
+{% load widget_tweaks %}
 {% block title %}{% if student %}Edit {{ student.get_full_name }}{% else %}Enroll a student{% endif %} | Roshan Mustaqbil{% endblock %}
 {% block content %}
 <div class="rm-page rm-page--narrow">
@@ -45,8 +46,8 @@
                                     <span class="rm-field__label" id="{{ field.auto_id }}_label">{{ field.label }}</span>
                                     <div class="rm-choices" role="group" aria-labelledby="{{ field.auto_id }}_label">{{ field }}</div>
                                 {% else %}
-                                    <label for="{{ field.id_for_label }}">{{ field.label }}{% if row.required %}<span class="rm-field__req" aria-hidden="true">*</span>{% endif %}</label>
-                                    {{ field }}
+                                    <label for="{{ field.id_for_label }}">{{ field.label }}{% if row.required %}<span class="rm-field__req" aria-hidden="true">*</span><span class="rm-sr"> (required)</span>{% endif %}</label>
+                                    {% if row.required %}{{ field|attr:"aria-required:true" }}{% else %}{{ field }}{% endif %}
                                 {% endif %}
                                 {% if field.help_text %}<p class="rm-field__help">{{ field.help_text }}</p>{% endif %}
                                 {% for error in field.errors %}<p class="rm-field__error">{{ error }}</p>{% endfor %}
@@ -58,6 +59,7 @@
         {% endfor %}
 
         <div class="rm-form__actions">
+            {% if student %}<a class="rm-btn rm-btn--ghost" href="{% url 'rm-remove-student' student.id %}" style="margin-right: auto; color: var(--rm-danger)">Remove this student</a>{% endif %}
             <a class="rm-btn rm-btn--secondary" href="{% if student %}{% url 'rm-student-profile' student.id %}{% elif from_desk %}{% url 'youth-daily-attendance' %}{% else %}{% url 'rm-students' %}{% endif %}">Cancel</a>
             <button class="rm-btn rm-btn--primary" type="submit">{% if student %}Save changes{% else %}Enroll and mark present{% endif %}</button>
         </div>

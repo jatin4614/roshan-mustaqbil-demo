@@ -13,15 +13,11 @@
     </header>
 
     <section class="rm-kpis" style="--rm-kpi-count: 4" aria-label="Calls">
-        <div class="rm-kpi">
-            <span class="rm-kpi__label">Waiting for a call</span>
-            <div class="rm-kpi__value">{{ total_due }}</div>
-            <div class="rm-kpi__note">Across all four lists</div>
-        </div>
+        {% include "rm/partials/calls_due.html" %}
         <div class="rm-kpi" id="rm-calls-today">
             <span class="rm-kpi__label">Calls logged today</span>
             <div class="rm-kpi__value">{{ stats.today }}</div>
-            <div class="rm-kpi__note"><b>{{ stats.mine_today }}</b> by you</div>
+            <div class="rm-kpi__note">So far today</div>
         </div>
         <div class="rm-kpi">
             <span class="rm-kpi__label">Calls this week</span>
@@ -35,11 +31,7 @@
         </div>
     </section>
 
-    <nav class="rm-tabs" aria-label="Lists">
-        {% for item in queues %}
-            <a href="?queue={{ item.key|urlencode }}{% if filter_query %}&amp;{{ filter_query }}{% endif %}"{% if item.key == queue %} aria-current="true"{% endif %}>{{ item.label }} <span>{{ item.count }}</span></a>
-        {% endfor %}
-    </nav>
+    {% include "rm/partials/call_tabs.html" %}
 
     <section class="rm-card" data-live>
         <div class="rm-card__head">

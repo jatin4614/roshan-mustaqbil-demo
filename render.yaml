@@ -7,9 +7,8 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health/
-    initialDeployHook: >-
-      python manage.py bootstrap_roshan_mustaqbil_demo --demo-staff &&
-      python manage.py seed_youth_centre_demo
+    # The start-up script (docker/entrypoint.sh) runs the migrations, creates
+    # the administrator and loads the demo data.
     envVars:
       - key: DEBUG
         value: "False"
@@ -21,10 +20,12 @@ services:
         value: "True"
       - key: RENDER_ASYNC_RELEASE_TASKS
         value: "1"
-      # Demo data: set to "0" (and run `manage.py seed_youth_centre_demo
-      # --remove`) before entering real students.
+      # Demo data. Going live: set RM_SEED_DEMO_DATA to "0" and
+      # RM_REMOVE_DEMO_DATA to "1" for one deploy, then back to "0".
       - key: RM_SEED_DEMO_DATA
         value: "1"
+      - key: RM_REMOVE_DEMO_DATA
+        value: "0"
       - key: GUNICORN_WORKERS
         value: "1"
       - key: GUNICORN_THREADS
@@ -44,8 +45,9 @@ services:
         generateValue: true
       - key: DEMO_ADMIN_USERNAME
         value: admin
-      # Not stored in the repository: Render asks for it when the
-      # Blueprint is created.
+      # The administrator's password (the only sign-in). Not stored in the
+      # repository: Render asks for it when the Blueprint is created, and the
+      # deploy stops with an error if it's left blank.
       - key: DEMO_ADMIN_PASSWORD
         sync: false
 databases:

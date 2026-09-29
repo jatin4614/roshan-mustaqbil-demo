@@ -5,11 +5,17 @@
  * links, the single-series charts); saffron is reserved for "today" and
  * focus, so it always means "now / here".
  *
- * Chart palettes were checked with the dataviz validator:
+ * Chart palettes were checked with the dataviz validator, against the
+ * glass panels as they actually render (light #f6f9f9, dark #131d26):
  *   goals (light)  #3F7D2B #2F6DB5 #E0701F #8A5CC2  — all checks pass
  *   goals (dark)   #4E9A36 #4A86D0 #D06F28 #9A7DD6  — all checks pass
  *   age ramp       one teal hue, monotone, light end >= 2:1
- *   engagement     status colours; always shipped with a text label.
+ *   engagement     status colours, always shipped with a text label.
+ *                  Neighbours separate (ΔE >= 15); Inactive is grey on
+ *                  purpose ("gone quiet").
+ *
+ * Surfaces are frosted glass over one fixed backdrop (see "Glass" at the
+ * end of this file).
  */
 
 :root {
@@ -17,11 +23,11 @@
     --rm-ink-2: #45566b;
     --rm-muted: #5b6778;   /* 5.2:1 on the page: AA for small text */
     --rm-faint: #667384;   /* 4.8:1 on cards, for axis labels */
-    --rm-page: #f2f5f4;
+    --rm-page: rgba(15, 118, 110, 0.06);
     --rm-surface: #ffffff;
-    --rm-sunken: #f6f8f8;
-    --rm-line: #e1e7e6;
-    --rm-line-strong: #c9d3d2;
+    --rm-sunken: rgba(18, 40, 56, 0.045);
+    --rm-line: rgba(18, 40, 56, 0.1);
+    --rm-line-strong: rgba(18, 40, 56, 0.2);
     --rm-teal: #0f766e;
     --rm-teal-strong: #0b5c55;
     --rm-teal-soft: #e3f2ef;
@@ -36,7 +42,7 @@
     --rm-dormant: #e39b2d;
     --rm-inactive: #6e7f96;
     --rm-muted-fill: #b9c2cc;
-    --rm-moved: #8a7560;
+    --rm-moved: #a8622e;
 
     /* what happened to students who stopped coming */
     --rm-call: #e8811a;
@@ -74,11 +80,11 @@ body.dark {
     --rm-ink-2: #c0cad3;
     --rm-muted: #9aa7b4;
     --rm-faint: #8391a0;
-    --rm-page: #111820;
+    --rm-page: rgba(47, 163, 150, 0.08);
     --rm-surface: #18212b;
-    --rm-sunken: #1d2833;
-    --rm-line: #273441;
-    --rm-line-strong: #34444f;
+    --rm-sunken: rgba(255, 255, 255, 0.05);
+    --rm-line: rgba(255, 255, 255, 0.08);
+    --rm-line-strong: rgba(255, 255, 255, 0.16);
     --rm-teal: #2fa396;
     --rm-teal-strong: #52bdb0;
     --rm-teal-soft: #173a3a;
@@ -91,7 +97,7 @@ body.dark {
     --rm-dormant: #e8a640;
     --rm-inactive: #8a9bb2;
     --rm-muted-fill: #4f5b69;
-    --rm-moved: #b59c80;
+    --rm-moved: #c47a45;
     --rm-call: #f0953a;
     --rm-good: #4fb265;
     --rm-neutral: #2fa396;
@@ -115,8 +121,6 @@ body.dark {
 
 /* ── Shell ─────────────────────────────────────────────────────────────── */
 
-body:has(.rm-page) { background: var(--rm-page); }
-body:has(.rm-page) .oh-main-content { background: var(--rm-page); }
 
 .rm-page {
     max-width: 1320px;
@@ -189,6 +193,9 @@ body.dark .rm-btn--primary { color: #0c1a1a; }
 .rm-btn--lg { min-height: 48px; padding: 0 22px; font-size: 15px; }
 .rm-btn svg { width: 16px; height: 16px; flex: none; }
 .rm-btn[disabled] { opacity: .55; cursor: default; }
+.rm-page .rm-btn--danger, .rm-btn--danger { background: var(--rm-danger); color: #fff; }
+.rm-btn--danger:hover { filter: brightness(0.92); }
+body.dark .rm-btn--danger { color: #1a0d0b; }
 
 /* ── Cards ─────────────────────────────────────────────────────────────── */
 
@@ -287,12 +294,6 @@ a.rm-kpi:hover { background: var(--rm-sunken); }
 .rm-legend--inline li { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--rm-ink-2); }
 
 .rm-swatch { width: 12px; height: 12px; border-radius: 3px; background: var(--rm-other); flex: none; display: inline-block; }
-
-    display: grid;
-    grid-template-columns: repeat(auto-fill, 11px);
-    gap: 3px;
-    align-content: start;
-}
 
 /* ── Colour keys (shared by swatches, bars, dots, cells) ─────────────── */
 
@@ -414,6 +415,8 @@ body.dark .rm-tip { background: #eef2f4; color: #14233a; }
 .rm-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--k, var(--rm-other)); }
 .rm-pill--plain::before { display: none; }
 .rm-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--rm-ink-2); white-space: nowrap; }
+.rm-tag--new, .rm-list__item .rm-tag, .rm-call__meta .rm-tag { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--rm-teal-soft); color: var(--rm-teal-strong); }
+.rm-call__meta .rm-tag { background: var(--rm-sunken); color: var(--rm-ink-2); }
 
 /* ── Tables ────────────────────────────────────────────────────────────── */
 
@@ -597,18 +600,17 @@ select.rm-control, .rm-form select {
 /* ── Login ────────────────────────────────────────────────────────────── */
 
 .rm-login *, .rm-login *::before, .rm-login *::after { box-sizing: border-box; }
-.rm-login { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); background: #ffffff; color: #14233a; font-family: Inter, system-ui, sans-serif; }
-@media (min-width: 960px) { .rm-login { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); } }
-.rm-login__brand { position: relative; overflow: hidden; background: #f7f7f7; /* the logo's own ground */ display: none; place-items: center; padding: 48px; border-right: 1px solid #e1e7e6; }
+.rm-login { position: relative; min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; color: #14233a; font-family: Inter, system-ui, sans-serif; }
+@media (min-width: 960px) { .rm-login { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } }
+.rm-login__brand { display: none; place-items: center; padding: 48px; }
 @media (min-width: 960px) { .rm-login__brand { display: grid; } }
-.rm-login__brand img { width: min(360px, 70%); height: auto; position: relative; z-index: 1; }
-.rm-login__ridge { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 34%; }
+.rm-login__brand img { width: min(340px, 64%); height: auto; filter: drop-shadow(0 18px 30px rgba(18, 52, 60, 0.18)); }
 .rm-login__panel { display: grid; place-items: center; padding: 32px 20px; }
-.rm-login__form { width: min(380px, 100%); }
-.rm-login__logo { width: 72px; height: 72px; border-radius: 16px; object-fit: cover; margin-bottom: 18px; }
+.rm-login__form { width: min(400px, 100%); padding: 34px 32px 28px; border-radius: 22px; }
+.rm-login__logo { width: 88px; height: auto; margin: 0 auto 16px; display: block; }
 @media (min-width: 960px) { .rm-login__logo { display: none; } }
 .rm-login h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.025em; }
-.rm-login__sub { margin: 6px 0 28px; color: #6f7d8e; }
+.rm-login__sub { margin: 6px 0 26px; color: #4f5d6e; }
 .rm-login label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
 .rm-login .rm-control { min-height: 46px; margin-bottom: 16px; }
 .rm-login__pw { position: relative; }
@@ -618,7 +620,8 @@ select.rm-control, .rm-form select {
 .rm-login__row a:hover { text-decoration: underline; }
 .rm-login .rm-btn { width: 100%; min-height: 48px; font-size: 15px; }
 .rm-login__error { background: #fbeae7; color: #8f2a1e; border-radius: 10px; padding: 10px 14px; margin-bottom: 18px; font-size: 13.5px; }
-.rm-login__foot { margin-top: 28px; font-size: 12.5px; color: #9aa6b4; text-align: center; }
+.rm-login__row { color: #4f5d6e; }
+.rm-login__foot { margin-top: 24px; font-size: 12.5px; color: #5b6778; text-align: center; }
 
 @media (prefers-reduced-motion: reduce) {
     .rm-page *, .rm-tip { transition: none !important; animation: none !important; }
@@ -770,4 +773,171 @@ body.dark .rm-split--labelled > span { color: #0c1a1a; }
 @media (max-width: 640px) {
     .rm-cols--dense .rm-cols__x span:nth-child(even) { visibility: hidden; }
     .rm-call__form { grid-template-columns: minmax(0, 1fr); }
+}
+
+
+/* ── Glass ─────────────────────────────────────────────────────────────────
+ *
+ * One fixed backdrop sits behind every centre screen: Kupwara in the
+ * morning. A cool mist sky, the torch's saffron light rising top-right,
+ * the river's teal on the left and three soft ridges of the hills along
+ * the bottom. Panels are frosted glass floating over it; the backdrop is
+ * the one bold element, and everything on top stays calm.
+ *
+ * Glass is 62–80% opaque, so text keeps its contrast and the chart
+ * colours read as they were validated. It turns solid when the system asks
+ * for reduced transparency, or when the browser can't blur.
+ */
+
+:root {
+    --rm-glass: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.6));
+    --rm-glass-flat: rgba(255, 255, 255, 0.66);
+    --rm-glass-soft: rgba(255, 255, 255, 0.46);
+    --rm-glass-strong: rgba(255, 255, 255, 0.82);
+    --rm-glass-edge: rgba(255, 255, 255, 0.78);
+    --rm-glass-blur: saturate(165%) blur(18px);
+    --rm-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 0 0 1px rgba(18, 40, 56, 0.05), 0 22px 44px -28px rgba(18, 52, 60, 0.45);
+    --rm-sky:
+        radial-gradient(60vmax 44vmax at 96% -6%, rgba(242, 146, 52, 0.34), rgba(242, 146, 52, 0) 70%),
+        radial-gradient(52vmax 48vmax at -8% 42%, rgba(16, 140, 124, 0.22), rgba(16, 140, 124, 0) 70%),
+        radial-gradient(70vmax 40vmax at 60% 118%, rgba(32, 60, 110, 0.12), rgba(32, 60, 110, 0) 70%),
+        linear-gradient(165deg, #d9ebe6 0%, #e7f1f1 46%, #edf0f6 100%);
+    --rm-ridges: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 320' preserveAspectRatio='none'%3E%3Cpath d='M0 170 L120 120 L230 150 L360 70 L470 132 L585 92 L700 150 L820 60 L960 138 L1080 96 L1210 150 L1330 84 L1460 130 L1600 100 L1600 320 L0 320Z' fill='%23b4d3cb' fill-opacity='.55'/%3E%3Cpath d='M0 230 L150 172 L290 214 L430 150 L560 208 L700 168 L850 226 L990 160 L1120 214 L1260 176 L1420 226 L1600 180 L1600 320 L0 320Z' fill='%238cbcb1' fill-opacity='.45'/%3E%3Cpath d='M0 286 L180 242 L330 276 L500 230 L660 280 L820 246 L990 288 L1160 248 L1330 284 L1480 254 L1600 272 L1600 320 L0 320Z' fill='%23649f91' fill-opacity='.32'/%3E%3C/svg%3E");
+}
+
+body.dark {
+    --rm-glass: linear-gradient(180deg, rgba(26, 38, 50, 0.72), rgba(20, 30, 40, 0.6));
+    --rm-glass-flat: rgba(22, 32, 42, 0.66);
+    --rm-glass-soft: rgba(255, 255, 255, 0.05);
+    --rm-glass-strong: rgba(20, 30, 40, 0.86);
+    --rm-glass-edge: rgba(255, 255, 255, 0.09);
+    --rm-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.2), 0 24px 48px -28px rgba(0, 0, 0, 0.7);
+    --rm-sky:
+        radial-gradient(60vmax 44vmax at 96% -6%, rgba(240, 149, 58, 0.16), rgba(240, 149, 58, 0) 70%),
+        radial-gradient(52vmax 48vmax at -8% 42%, rgba(47, 163, 150, 0.18), rgba(47, 163, 150, 0) 70%),
+        linear-gradient(165deg, #0c1a20 0%, #0d161f 50%, #0f1522 100%);
+    --rm-ridges: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 320' preserveAspectRatio='none'%3E%3Cpath d='M0 170 L120 120 L230 150 L360 70 L470 132 L585 92 L700 150 L820 60 L960 138 L1080 96 L1210 150 L1330 84 L1460 130 L1600 100 L1600 320 L0 320Z' fill='%2317343a' fill-opacity='.7'/%3E%3Cpath d='M0 230 L150 172 L290 214 L430 150 L560 208 L700 168 L850 226 L990 160 L1120 214 L1260 176 L1420 226 L1600 180 L1600 320 L0 320Z' fill='%23123036' fill-opacity='.8'/%3E%3Cpath d='M0 286 L180 242 L330 276 L500 230 L660 280 L820 246 L990 288 L1160 248 L1330 284 L1480 254 L1600 272 L1600 320 L0 320Z' fill='%230d2429' fill-opacity='.9'/%3E%3C/svg%3E");
+}
+
+/* The backdrop: sky and light, then the hills. */
+body.rm-shell { background: #dfece8; }
+body.dark.rm-shell { background: #0d161f; }
+body.rm-shell::before, body.rm-shell::after {
+    content: "";
+    position: fixed;
+    pointer-events: none;
+    z-index: -1;
+}
+body.rm-shell::before { inset: 0; background: var(--rm-sky); }
+body.rm-shell::after { left: 0; right: 0; bottom: 0; height: 34vh; background: var(--rm-ridges) bottom / 100% 100% no-repeat; }
+body.rm-shell .oh-main-content, body.rm-shell #ohMainContent { background: transparent !important; }
+
+/* Frosted panels. */
+.rm-card, .rm-kpis, .rm-login__form {
+    background: var(--rm-glass);
+    border-color: var(--rm-glass-edge);
+    box-shadow: var(--rm-glass-shadow);
+    -webkit-backdrop-filter: var(--rm-glass-blur);
+    backdrop-filter: var(--rm-glass-blur);
+}
+.rm-kpis { border: 1px solid var(--rm-glass-edge); }
+.rm-kpi { border-color: var(--rm-line); }
+a.rm-kpi:hover { background: rgba(255, 255, 255, 0.45); }
+body.dark a.rm-kpi:hover { background: rgba(255, 255, 255, 0.04); }
+
+/* Pieces inside a panel are lighter glass: no second blur. */
+.rm-call, .rm-result, .rm-tabs a, .rm-seg, .rm-choices label {
+    background: var(--rm-glass-soft);
+    border-color: var(--rm-glass-edge);
+}
+.rm-call { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+body.dark .rm-call { box-shadow: none; }
+.rm-tabs a { -webkit-backdrop-filter: var(--rm-glass-blur); backdrop-filter: var(--rm-glass-blur); box-shadow: var(--rm-glass-shadow); }
+.rm-tabs a[aria-current="true"] { background: color-mix(in srgb, var(--rm-teal) 14%, rgba(255, 255, 255, 0.7)); }
+body.dark .rm-tabs a[aria-current="true"] { background: color-mix(in srgb, var(--rm-teal) 22%, transparent); }
+.rm-seg a[aria-current="true"] { background: rgba(255, 255, 255, 0.9); }
+body.dark .rm-seg a[aria-current="true"] { background: rgba(255, 255, 255, 0.1); }
+.rm-result--exact { background: color-mix(in srgb, var(--rm-teal) 12%, rgba(255, 255, 255, 0.7)); border-color: var(--rm-teal); }
+.rm-table th { background: var(--rm-glass-strong); -webkit-backdrop-filter: var(--rm-glass-blur); backdrop-filter: var(--rm-glass-blur); }
+.rm-table tbody tr:hover td { background: rgba(255, 255, 255, 0.4); }
+body.dark .rm-table tbody tr:hover td { background: rgba(255, 255, 255, 0.04); }
+
+/* Tinted glass for messages. */
+.rm-flash, .rm-notice {
+    -webkit-backdrop-filter: var(--rm-glass-blur);
+    backdrop-filter: var(--rm-glass-blur);
+    background: color-mix(in srgb, var(--rm-teal) 12%, rgba(255, 255, 255, 0.7));
+}
+.rm-flash--info, .rm-notice:not(.rm-notice--good):not(.rm-notice--danger) { background: color-mix(in srgb, var(--rm-saffron) 14%, rgba(255, 255, 255, 0.72)); }
+.rm-flash--danger, .rm-notice--danger { background: color-mix(in srgb, var(--rm-danger) 12%, rgba(255, 255, 255, 0.74)); }
+body.dark .rm-flash, body.dark .rm-notice { background: color-mix(in srgb, var(--rm-teal) 18%, rgba(20, 30, 40, 0.7)); }
+body.dark .rm-flash--info, body.dark .rm-notice:not(.rm-notice--good):not(.rm-notice--danger) { background: color-mix(in srgb, var(--rm-saffron) 16%, rgba(20, 30, 40, 0.72)); }
+body.dark .rm-flash--danger, body.dark .rm-notice--danger { background: color-mix(in srgb, var(--rm-danger) 16%, rgba(20, 30, 40, 0.74)); }
+
+/* Controls: clear glass fields, a lit primary button. */
+.rm-control,
+.rm-form input[type="text"], .rm-form input[type="email"], .rm-form input[type="date"],
+.rm-form input[type="tel"], .rm-form input[type="search"], .rm-form input[type="number"],
+.rm-form input[type="password"], .rm-form select, .rm-form textarea {
+    background-color: rgba(255, 255, 255, 0.78);
+    border-color: rgba(18, 40, 56, 0.16);
+}
+body.dark .rm-control,
+body.dark .rm-form input, body.dark .rm-form select, body.dark .rm-form textarea { background-color: rgba(8, 14, 20, 0.55); border-color: rgba(255, 255, 255, 0.12); }
+.rm-control:focus, .rm-form input:focus, .rm-form select:focus, .rm-form textarea:focus { background-color: #fff; }
+body.dark .rm-control:focus, body.dark .rm-form input:focus, body.dark .rm-form select:focus, body.dark .rm-form textarea:focus { background-color: rgba(8, 14, 20, 0.8); }
+.rm-page .rm-btn--primary, .rm-btn--primary {
+    background: linear-gradient(180deg, #14897f, #0f766e);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 8px 18px -10px rgba(15, 118, 110, 0.8);
+}
+.rm-btn--primary:hover { background: linear-gradient(180deg, #117a71, #0b5c55); }
+body.dark .rm-btn--primary { background: linear-gradient(180deg, #3cb3a5, #2fa396); }
+.rm-page .rm-btn--secondary, .rm-btn--secondary {
+    background: var(--rm-glass-soft);
+    border-color: rgba(18, 40, 56, 0.14);
+    -webkit-backdrop-filter: var(--rm-glass-blur);
+    backdrop-filter: var(--rm-glass-blur);
+}
+body.dark .rm-page .rm-btn--secondary, body.dark .rm-btn--secondary { border-color: rgba(255, 255, 255, 0.14); }
+
+/* The app's own frame (header and menu) is glass too. */
+body.rm-shell #mainHeader {
+    background: rgba(255, 255, 255, 0.5) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.7) !important;
+    -webkit-backdrop-filter: var(--rm-glass-blur);
+    backdrop-filter: var(--rm-glass-blur);
+}
+body.rm-shell #sidebar {
+    background: rgba(255, 255, 255, 0.52) !important;
+    border-right-color: rgba(255, 255, 255, 0.7) !important;
+    -webkit-backdrop-filter: var(--rm-glass-blur);
+    backdrop-filter: var(--rm-glass-blur);
+}
+body.rm-shell #sidebar .sideboxmain:not(.sidebox-current) { background-color: rgba(255, 255, 255, 0.4); }
+body.dark.rm-shell #mainHeader { background: rgba(14, 22, 30, 0.55) !important; border-bottom-color: rgba(255, 255, 255, 0.06) !important; }
+body.dark.rm-shell #sidebar { background: rgba(14, 22, 30, 0.6) !important; border-right-color: rgba(255, 255, 255, 0.06) !important; }
+body.dark.rm-shell #sidebar .sideboxmain:not(.sidebox-current) { background-color: rgba(255, 255, 255, 0.04); }
+
+/* Sign-in: the same morning, with the mark and one glass panel. */
+.rm-login__form { border: 1px solid var(--rm-glass-edge); }
+.rm-login .rm-control { background-color: rgba(255, 255, 255, 0.82); }
+body.rm-signin::before { animation: rm-dawn 1.6s ease-out both; }
+@keyframes rm-dawn { from { opacity: 0.4; } to { opacity: 1; } }
+
+/* Solid panels when transparency is unwelcome or unsupported. */
+@media (prefers-reduced-transparency: reduce) {
+    .rm-card, .rm-kpis, .rm-login__form, .rm-tabs a, .rm-flash, .rm-notice, .rm-table th,
+    body.rm-shell #mainHeader, body.rm-shell #sidebar, .rm-btn--secondary {
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+    .rm-card, .rm-kpis, .rm-login__form, .rm-table th { background: var(--rm-surface) !important; }
+    body.rm-shell #mainHeader, body.rm-shell #sidebar { background: var(--rm-surface) !important; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .rm-card, .rm-kpis, .rm-login__form, .rm-table th { background: rgba(255, 255, 255, 0.94); }
+    body.dark .rm-card, body.dark .rm-kpis, body.dark .rm-table th { background: rgba(22, 32, 42, 0.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+    body.rm-signin::before { animation: none; }
 }

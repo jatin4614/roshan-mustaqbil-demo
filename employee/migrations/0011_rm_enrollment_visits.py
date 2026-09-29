@@ -5,9 +5,8 @@ Records entered before this rule existed may have no attendance on that day
 so every student's history starts on the day they enrolled.
 """
 
-import datetime
-
 from django.db import migrations
+from django.utils import timezone
 
 ENROLLMENT_VISIT = "Enrolled at the centre"
 
@@ -15,7 +14,7 @@ ENROLLMENT_VISIT = "Enrolled at the centre"
 def forwards(apps, schema_editor):
     StudentProfile = apps.get_model("employee", "StudentProfile")
     Attendance = apps.get_model("attendance", "Attendance")
-    today = datetime.date.today()
+    today = timezone.localdate()
     visited = set(
         Attendance.objects.filter(employee_id__rm_profile__isnull=False).values_list("employee_id", "attendance_date")
     )

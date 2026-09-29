@@ -4,5 +4,7 @@
 <div class="rm-kpi" id="rm-calls-today" hx-swap-oob="true">
     <span class="rm-kpi__label">Calls logged today</span>
     <div class="rm-kpi__value">{{ stats.today }}</div>
-    <div class="rm-kpi__note"><b>{{ stats.mine_today }}</b> by you</div>
+    <div class="rm-kpi__note">So far today</div>
 </div>
+{% include "rm/partials/calls_due.html" with oob=True %}
+{% include "rm/partials/call_tabs.html" with oob=True %}

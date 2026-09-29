@@ -59,7 +59,7 @@
             <div class="rm-card__head">
                 <div>
                     <h2 class="rm-card__title">How long students kept coming before they stopped</h2>
-                    <p class="rm-card__meta">{% if kept_total %}{{ kept_total }} inactive students, counted from the day they enrolled. <b>{{ kept_early }}</b> stopped within their first month, so the first weeks matter most.{% else %}No one has stopped coming yet.{% endif %}</p>
+                    <p class="rm-card__meta">{% if kept_total %}{{ kept_total }} inactive students, counted from the day they enrolled. {% if kept_mostly_early %}Most of them, <b>{{ kept_early }}</b>, stopped within their first month, so the first weeks matter most.{% else %}<b>{{ kept_early }}</b> stopped within their first month; the largest group, {{ kept_largest_share }}, kept coming for {{ kept_largest }} before they stopped.{% endif %}{% else %}No one has stopped coming yet.{% endif %}</p>
                 </div>
             </div>
             {% include "rm/charts/bars.html" with rows=kept empty="No one has stopped coming." %}

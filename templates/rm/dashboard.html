@@ -60,17 +60,17 @@
         <a class="rm-kpi" href="{% url 'rm-attendance-dashboard' %}">
             <span class="rm-kpi__label">Visits per active student</span>
             <div class="rm-kpi__value">{{ kpis.median_visits|floatformat:"-1" }}</div>
-            <div class="rm-kpi__note">Typical number in 30 days; <b>{{ kpis.rare }}</b> of {{ kpis.active_visitors }} came only once or twice</div>
+            <div class="rm-kpi__note">Typical number in 30 days, for students enrolled over a month ago; <b>{{ kpis.rare }}</b> of {{ kpis.active_visitors }} came only once or twice</div>
         </a>
         <a class="rm-kpi" href="{% url 'rm-students' %}?registered=this_month&amp;sort=newest">
             <span class="rm-kpi__label">Enrolled this month, so far</span>
             <div class="rm-kpi__value">{{ kpis.enrolled_month }}</div>
-            <div class="rm-kpi__note"><b>{{ kpis.enrolled_month_back }}</b> have come back since enrolling; {{ kpis.enrolled_last_month }} enrolled last month</div>
+            <div class="rm-kpi__note">{% if kpis.enrolled_settled %}<b>{{ kpis.enrolled_month_back }}</b> of the {{ kpis.enrolled_settled }} who enrolled over a week ago have come back{% else %}Too early to say who comes back{% endif %}{% if kpis.enrolled_too_early %}; {{ kpis.enrolled_too_early }} enrolled in the last week{% endif %}</div>
         </a>
         <a class="rm-kpi{% if kpis.due %} rm-kpi--alert{% endif %}" href="{% url 'rm-calls' %}">
             <span class="rm-kpi__label">Waiting for a call</span>
             <div class="rm-kpi__value">{{ kpis.due }}</div>
-            <div class="rm-kpi__note">Not called since they stopped coming; <b>{{ kpis.due_once }}</b> didn't come back after enrolling</div>
+            <div class="rm-kpi__note">Across the four call lists; <b>{{ kpis.due_once }}</b> new students who didn't come back, {{ kpis.due_regulars }} regular{{ kpis.due_regulars|pluralize }} who missed this week</div>
         </a>
     </section>
 
@@ -81,7 +81,7 @@
                     <h2 class="rm-card__title">Who to call</h2>
                     <p class="rm-card__meta">{{ calls_week }} call{{ calls_week|pluralize }} logged this week. Start at the top: they're the easiest to bring back.</p>
                 </div>
-                {% if rm_role != "frontdesk" %}<a class="rm-card__link" href="{% url 'rm-calls' %}">Open the call list</a>{% endif %}
+                <a class="rm-card__link" href="{% url 'rm-calls' %}">Open the call list</a>
             </div>
             <ul class="rm-queue">
                 {% for queue in queues %}
@@ -117,7 +117,7 @@
                     <h2 class="rm-card__title">Career goals</h2>
                     <p class="rm-card__meta">Share of the {{ current_total }} current students</p>
                 </div>
-                {% if rm_role != "frontdesk" %}<a class="rm-card__link" href="{% url 'youth-centre-goals' %}">Goal details</a>{% endif %}
+                <a class="rm-card__link" href="{% url 'youth-centre-goals' %}">Goal details</a>
             </div>
             {% include "rm/charts/bars.html" with rows=goals dots=True %}
         </section>

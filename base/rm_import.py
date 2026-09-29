@@ -16,7 +16,8 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from attendance.models import Attendance
-from base.rm import ENROLLMENT_VISIT, normalize_phone, normalize_qualification, student_queryset, valid_mobile
+from base.models import EmployeeShiftDay
+from base.rm import EARLIEST_ENROLLMENT, ENROLLMENT_VISIT, normalize_phone, normalize_qualification, student_queryset, valid_mobile
 from base.rm_access import rm_required
 from base.rm_common import csv_response
 from employee.models import Employee, StudentProfile
@@ -127,6 +128,8 @@ def _check_students(rows):
                 errors.append("enrollment date is missing (an approximate date is fine)")
             elif values["registration_date"] > timezone.localdate():
                 errors.append("enrollment date is in the future")
+            elif values["registration_date"] < EARLIEST_ENROLLMENT:
+                errors.append(f"enrollment date is before {EARLIEST_ENROLLMENT.year}; check the year")
         except ValueError as error:
             errors.append(str(error))
         if not values.get("dob") and row.get("age", "").isdigit():
@@ -197,6 +200,7 @@ def _check_visits(rows):
     for student_id, phone in student_queryset().values_list("id", "phone"):
         by_phone.setdefault(phone, []).append(student_id)
     names = dict((student_id, f"{first} {last}".strip()) for student_id, first, last in student_queryset().values_list("id", "employee_first_name", "employee_last_name"))
+    enrolled_on = dict(student_queryset().values_list("id", "rm_profile__registration_date"))
     existing = set(Attendance.objects.filter(employee_id__in=names).values_list("employee_id", "attendance_date"))
     today = timezone.localdate()
     checked, seen = [], set()
@@ -217,6 +221,8 @@ def _check_visits(rows):
                 errors.append("date is missing")
             elif day > today:
                 errors.append("date is in the future")
+            elif student_id and enrolled_on.get(student_id) and day < enrolled_on[student_id]:
+                errors.append(f"date is before they enrolled ({enrolled_on[student_id]:%d %b %Y}): fix the date, or correct their enrollment date first")
         except ValueError as error:
             errors.append(str(error))
             day = None
@@ -236,7 +242,15 @@ def _check_visits(rows):
     return checked
 
 
-def _import_students(checked):
+def _weekdays():
+    """{weekday number: shift-day row}: bulk-created visits skip save(),
+    which normally fills in the weekday."""
+    names = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    days = {day.day: day for day in EmployeeShiftDay.objects.all()}
+    return {index: days.get(name) for index, name in enumerate(names)}
+
+
+def _import_students(checked, user=None):
     rows = [row["values"] for row in checked if row["state"] == "new"]
     badges = set(Employee.objects.exclude(badge_id__isnull=True).values_list("badge_id", flat=True))
     emails = set(Employee.objects.values_list("email", flat=True))
@@ -278,10 +292,12 @@ def _import_students(checked):
         ))
     StudentProfile.objects.bulk_create(profiles, batch_size=200)
     # Each student came in to enroll: record that day as their first visit.
+    weekdays = _weekdays()
     Attendance.objects.bulk_create([
         Attendance(
             employee_id=profile.employee, attendance_date=profile.registration_date, attendance_clock_in_date=profile.registration_date,
             attendance_worked_hour="00:00", minimum_hour="00:00", request_description=ENROLLMENT_VISIT,
+            attendance_day=weekdays.get(profile.registration_date.weekday()), created_by=user,
         )
         for profile in profiles
     ], batch_size=500, ignore_conflicts=True)
@@ -289,6 +305,7 @@ def _import_students(checked):
 
 
 def _import_visits(checked, user):
+    weekdays = _weekdays()
     visits = []
     for row in checked:
         if row["state"] != "new":
@@ -299,14 +316,14 @@ def _import_visits(checked, user):
         visits.append(Attendance(
             employee_id_id=values["student_id"], attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=arrived,
             attendance_worked_hour="00:00", minimum_hour="00:00", request_description="Roshan Mustaqbil visit (imported)",
-            created_by=user,
+            created_by=user, attendance_day=weekdays.get(day.weekday()),
         ))
     before = Attendance.objects.count()
     Attendance.objects.bulk_create(visits, batch_size=500, ignore_conflicts=True)
     return Attendance.objects.count() - before
 
 
-@rm_required("coordinator")
+@rm_required
 def import_data(request):
     kind = request.POST.get("kind") or request.GET.get("kind") or "students"
     kind = kind if kind in {"students", "visits"} else "students"
@@ -338,7 +355,7 @@ def import_data(request):
             return redirect(f"{request.path}?kind={kind}")
         with transaction.atomic():
             if payload["kind"] == "students":
-                count = _import_students(payload["rows"])
+                count = _import_students(payload["rows"], request.user)
                 messages.success(request, f"Imported {count} student{'' if count == 1 else 's'}.")
                 return redirect("rm-students")
             count = _import_visits(payload["rows"], request.user)

@@ -34,11 +34,10 @@ PostgreSQL and `DEBUG` off.
 
 ## Before sharing any link
 
-- **Change the demo passwords.** `Admin123` is written in the README, and the
-  `desk` and `coordinator` accounts use it too. Before a public link, run
-  `.venv\Scripts\python manage.py changepassword admin` (and the same for
-  `desk` and `coordinator`), or on a hosted option set your own
-  `DEMO_ADMIN_PASSWORD`.
+- **Change the demo password.** `Admin123` is written in the README, and
+  `admin` is the only sign-in. Before a public link, run
+  `.venv\Scripts\python manage.py changepassword admin`, or on a hosted
+  option set your own `DEMO_ADMIN_PASSWORD`.
 - **Demo data only.** Don't put real students' names and phone numbers on a
   free tier or a tunnel.
 - **Options 1–4 run with `DEBUG` on.** An error page shows technical details.
@@ -54,7 +53,7 @@ PostgreSQL and `DEBUG` off.
 | What | Where |
 |---|---|
 | Production Docker image (Gunicorn, non-root user, health check) | `Dockerfile`, `docker/gunicorn.conf.py` |
-| Start-up script: waits for PostgreSQL, runs migrations, creates the admin, the three staff roles, the `desk` and `coordinator` accounts and the demo data (when `RM_SEED_DEMO_DATA=1`), and collects static files | `docker/entrypoint.sh` |
+| Start-up script: waits for PostgreSQL, runs migrations, creates the administrator (the only sign-in) and the demo data (when `RM_SEED_DEMO_DATA=1`), removes the demo data when going live (`RM_REMOVE_DEMO_DATA=1`), and collects static files | `docker/entrypoint.sh` |
 | Listens on the platform's `$PORT` | `docker/gunicorn.conf.py` |
 | Static files served by the app itself (WhiteNoise); no separate web server needed | `horilla/settings/base.py` |
 | Database from a single `DATABASE_URL` | `horilla/settings/base.py` |
@@ -145,7 +144,7 @@ account can open it.
    pip install -r requirements.txt
    printf 'CSRF_TRUSTED_ORIGINS=https://*.app.github.dev\nTIME_ZONE=Asia/Kolkata\n' > .env
    python manage.py migrate
-   python manage.py bootstrap_roshan_mustaqbil_demo --password 'choose-a-password' --demo-staff
+   python manage.py bootstrap_roshan_mustaqbil_demo --password 'choose-a-password'
    python manage.py seed_youth_centre_demo
    python manage.py runserver 0.0.0.0:8001
    ```
@@ -166,7 +165,7 @@ loads the demo data on the first start. Step by step: `RENDER_DEPLOYMENT.md`.
 2. At dashboard.render.com: **New +** > **Blueprint** > connect GitHub > choose
    `roshan-mustaqbil-demo`.
 3. Enter a `DEMO_ADMIN_PASSWORD` when asked. It becomes the password for
-   `admin`, `desk` and `coordinator`.
+   `admin`, the only sign-in. The deploy stops with an error if it's blank.
 4. **Apply**. The first build takes 10–20 minutes. Then open the
    `https://roshan-mustaqbil-demo.onrender.com` link (or the one Render shows).
 
@@ -278,15 +277,17 @@ few dollars a month. It has no advantage over Railway for this demo.
 | `SECURE_SSL_REDIRECT` | `True` where the platform doesn't already redirect to HTTPS | Sends visitors to the HTTPS address. |
 | `TIME_ZONE` | `Asia/Kolkata` | Visits are dated in India's time. |
 | `RM_SEED_DEMO_DATA` | `1` for a demo, `0` for real use | Loads the 960 demo students on the first start and adds the day's check-ins on later starts. |
-| `DEMO_ADMIN_USERNAME` / `DEMO_ADMIN_PASSWORD` | `admin` / your choice | The first manager account; `desk` and `coordinator` get the same password. |
+| `RM_REMOVE_DEMO_DATA` | `1` for one deploy when going live | Removes the demo students on start-up, for hosts without a shell. |
+| `DEMO_ADMIN_USERNAME` / `DEMO_ADMIN_PASSWORD` | `admin` / your choice | The administrator, the only sign-in. |
 | `GUNICORN_WORKERS` / `GUNICORN_THREADS` | `1` / `1`–`4` | Keeps memory within small plans. |
 
 ## Moving from the demo to real use
 
 See "Going live with real students" in `RENDER_DEPLOYMENT.md`. It applies to
-every hosted option: set `RM_SEED_DEMO_DATA=0`, run
-`python manage.py seed_youth_centre_demo --remove`, turn off the demo staff
-accounts and import the real register. For daily use at the centre, use a
+every hosted option: set `RM_SEED_DEMO_DATA=0`, remove the demo data
+(`RM_REMOVE_DEMO_DATA=1` for one deploy, or
+`python manage.py seed_youth_centre_demo --remove` where there's a shell),
+change the administrator's password and import the real register. For daily use at the centre, use a
 paid plan with a database that doesn't expire, and back it up.
 
 ## Sources

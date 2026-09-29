@@ -18,8 +18,8 @@
         </div>
     </div>
     <div class="rm-cols__x" aria-hidden="true">{% for col in chart.items %}<span>{{ col.label }}</span>{% endfor %}</div>
-    <table class="rm-sr">
+    <div class="rm-sr"><table>
         <caption>{{ caption }}</caption>
         {% for col in chart.items %}<tr><th scope="row">{{ col.tip }}</th><td>{{ col.tip_value }}</td></tr>{% endfor %}
-    </table>
+    </table></div>
 </div>

@@ -22,12 +22,12 @@ SUBMENUS = [
 
 if settings.YOUTH_CENTRE_MODE:
     MENU = _("Analytics")
-    ACCESSIBILITY = "base.rm_access.sidebar_coordinator"
+    ACCESSIBILITY = "base.rm_access.sidebar_admin"
     SUBMENUS = [
         {
             "menu": _("Analytics"),
             "redirect": reverse_lazy("youth-centre-analytics"),
-            "accessibility": "base.rm_access.sidebar_coordinator",
+            "accessibility": "base.rm_access.sidebar_admin",
         },
     ]
 

@@ -224,7 +224,7 @@ def stacked_columns(points, segments, unit="student"):
              "height": _pct(point["parts"].get(segment, 0), top)}
             for segment, key, label in segments
         ]
-        tip = ", ".join(f"{part['value']} {part['label'].lower()}" for part in parts)
+        tip = ", ".join(f"{part['value']} {part['label'][0].lower()}{part['label'][1:]}" for part in parts if part["value"])
         items.append({**point, "total": total, "parts": parts, "tip_value": f"{total} {unit}{'' if total == 1 else 's'}: {tip}"})
     return {
         "items": items,

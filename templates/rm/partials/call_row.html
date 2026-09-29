@@ -9,7 +9,7 @@
             </span>
         </a>
         <div class="rm-call__meta">
-            <span>{% if row.only_enrolled %}Enrolled {{ row.enrolled_days }} day{{ row.enrolled_days|pluralize }} ago and hasn't been back{% else %}Last came {{ row.days_since }} day{{ row.days_since|pluralize }} ago{% endif %}</span>
+            <span>{% if row.only_enrolled %}Enrolled {{ row.enrolled_days }} day{{ row.enrolled_days|pluralize }} ago and hasn't been back{% if row.enrolled_days > 60 %} <span class="rm-tag">Only came to enroll</span>{% endif %}{% else %}Last came {{ row.days_since }} day{{ row.days_since|pluralize }} ago{% endif %}</span>
             {% if profile.locality %}<span>{{ profile.locality }}</span>{% endif %}
         </div>
         <div style="display: flex; flex-wrap: wrap; gap: 6px 16px">

@@ -5,7 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from base import announcement
 from base import dashboard as dashboard_module
 from base import ess_dashboard, request_and_approve, views
-from base import rm_access, rm_attendance, rm_import, rm_staff, rm_students, rm_views
+from base import rm_access, rm_attendance, rm_import, rm_students, rm_views
 from base.cbv import (
     announcement_cbv,
     company,
@@ -78,14 +78,13 @@ urlpatterns = [
     path("students/enroll/", rm_students.enroll_student, name="rm-enroll-student"),
     path("students/<int:student_id>/", rm_students.student_profile, name="rm-student-profile"),
     path("students/<int:student_id>/edit/", rm_students.enroll_student, name="rm-edit-student"),
+    path("students/<int:student_id>/remove/", rm_students.remove_student, name="rm-remove-student"),
     path("students/follow-ups/<int:followup_id>/delete/", rm_students.delete_followup, name="rm-delete-followup"),
-    path("staff/", rm_staff.staff, name="rm-staff"),
-    path("staff/<int:user_id>/", rm_staff.staff_update, name="rm-staff-update"),
     # Earlier youth-centre endpoints, still used by the HR student tab.
-    path("goals/update/<int:student_id>/", rm_access.rm_required("coordinator")(dashboard_module.update_student_goal), name="youth-centre-goal-update"),
+    path("goals/update/<int:student_id>/", rm_access.rm_required(dashboard_module.update_student_goal), name="youth-centre-goal-update"),
     path(
         "dashboard/api/youth-centre/",
-        rm_access.rm_required("coordinator")(dashboard_module.youth_centre_dashboard_data),
+        rm_access.rm_required(dashboard_module.youth_centre_dashboard_data),
         name="youth-centre-dashboard-data",
     ),
     path(

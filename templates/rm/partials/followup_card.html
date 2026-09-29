@@ -2,12 +2,11 @@
     <div class="rm-card__head">
         <div>
             <h2 class="rm-card__title">Follow-up calls</h2>
-            <p class="rm-card__meta">{% if needs_followup %}{{ student.employee_first_name }} has stopped coming. Call, then record what you learn.{% else %}Use this if {{ student.employee_first_name }} stops coming.{% endif %}{% if profile.next_call_date %} Next call planned for {{ profile.next_call_date|date:"j M Y" }}.{% endif %}</p>
+            <p class="rm-card__meta">{% if needs_followup and no_return %}{{ student.employee_first_name }} hasn't been back since enrolling. Call, then record what you learn.{% elif needs_followup %}{{ student.employee_first_name }} has stopped coming. Call, then record what you learn.{% else %}Use this if {{ student.employee_first_name }} stops coming.{% endif %}{% if profile.next_call_date %} Next call planned for {{ profile.next_call_date|date:"j M Y" }}.{% endif %}</p>
         </div>
     </div>
     <div class="rm-grid rm-grid--2" style="gap: 28px">
-        {% if can_follow_up %}
-            <form method="post" class="rm-form" style="gap: 14px">
+        <form method="post" class="rm-form" style="gap: 14px">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="follow_up">
                 <div style="display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13.5px">
@@ -26,19 +25,16 @@
                 </div>
                 <div><button class="rm-btn rm-btn--primary" type="submit">Save call</button></div>
             </form>
-        {% endif %}
         <div>
             <h3 class="rm-card__title" style="margin-bottom: 12px">History</h3>
             <ul class="rm-timeline">
                 {% for call in calls %}
                     <li>
-                        <b>{{ call.get_result_display }}</b> <small>{{ call.called_on|date:"j M Y" }}{% if call.created_by %}, by {{ call.created_by.get_username }}{% endif %}</small>
+                        <b>{{ call.get_result_display }}</b> <small>{{ call.called_on|date:"j M Y" }}</small>
                         {% if call.reason %}<p>Why they stopped: {{ call.reason }}</p>{% endif %}
                         {% if call.notes %}<p>{{ call.notes }}</p>{% endif %}
                         {% if call.next_call_date %}<p class="rm-muted">Call again on {{ call.next_call_date|date:"j M Y" }}</p>{% endif %}
-                        {% if can_follow_up %}
-                            <form method="post" action="{% url 'rm-delete-followup' call.id %}" style="margin-top: 4px" onsubmit="return confirm('Remove this call from the history?')">{% csrf_token %}<button class="rm-btn rm-btn--ghost rm-btn--sm" type="submit" style="padding: 0; min-height: 24px; color: var(--rm-muted)">Remove this entry</button></form>
-                        {% endif %}
+                        <form method="post" action="{% url 'rm-delete-followup' call.id %}" style="margin-top: 4px" onsubmit="return confirm('Remove this call from the history?')">{% csrf_token %}<button class="rm-btn rm-btn--ghost rm-btn--sm" type="submit" style="padding: 0; min-height: 24px; color: var(--rm-muted)">Remove this entry</button></form>
                     </li>
                 {% empty %}
                     <li style="padding-left: 0" class="rm-muted">No calls recorded yet.</li>

@@ -1,0 +1,26 @@
+{% extends "index.html" %}
+{% block title %}Remove {{ student.get_full_name }} | Roshan Mustaqbil{% endblock %}
+{% block content %}
+<div class="rm-page rm-page--narrow">
+    <header class="rm-head">
+        <div>
+            <a class="rm-back" href="{% url 'rm-student-profile' student.id %}">‹ {{ student.get_full_name }}</a>
+            <h1 class="rm-head__title">Remove {{ student.get_full_name }}?</h1>
+            <p class="rm-head__sub">Use this for a student enrolled by mistake, such as a duplicate. For a student who has stopped coming, log a call instead: their history is worth keeping.</p>
+        </div>
+    </header>
+    <section class="rm-card">
+        <dl class="rm-facts">
+            <div><dt>Registration number</dt><dd>{{ student.badge_id }}</dd></div>
+            <div><dt>Phone</dt><dd>{{ student.phone }}</dd></div>
+            <div><dt>Enrolled</dt><dd>{{ student.rm_profile.registration_date|date:"j F Y" }}</dd></div>
+            <div><dt>Also removed</dt><dd>{{ visits }} visit{{ visits|pluralize }} and {{ calls }} call{{ calls|pluralize }}</dd></div>
+        </dl>
+        <form method="post" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px">
+            {% csrf_token %}
+            <a class="rm-btn rm-btn--secondary" href="{% url 'rm-student-profile' student.id %}">Keep the student</a>
+            <button class="rm-btn rm-btn--danger" type="submit">Remove the student</button>
+        </form>
+    </section>
+</div>
+{% endblock %}

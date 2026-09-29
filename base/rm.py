@@ -5,8 +5,8 @@ from collections import Counter
 from datetime import date, timedelta
 
 from django.db import IntegrityError, transaction
-from django.db.models import Count, F, IntegerField, Max, Min, OuterRef, Q, Subquery
-from django.db.models.functions import Coalesce
+from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
 from attendance.models import Attendance
@@ -31,11 +31,17 @@ ENGAGEMENT_HELP = {
     MOVED_ON: "Selected, joined a course, moved away or closed",
 }
 # Students who came only on the day they enrolled. After a week's grace
-# they are the easiest to lose, and the most worth a call.
+# they count as not having come back.
 NO_RETURN_AFTER_DAYS = 7
 NO_RETURN_LABEL = "Didn't come back after enrolling"
 NO_RETURN_HELP = f"Enrolled at least {NO_RETURN_AFTER_DAYS} days ago and hasn't been back since"
+# The first call list: recent enrollees who haven't come back yet, while a
+# call can still make a difference. Older ones are on the Inactive list.
+NEW_NO_RETURN_MAX_DAYS = 60
+NEW_NO_RETURN_LABEL = "New students who didn't come back"
+NEW_NO_RETURN_HELP = f"Enrolled {NO_RETURN_AFTER_DAYS}–{NEW_NO_RETURN_MAX_DAYS} days ago and haven't been back since"
 ENROLLMENT_VISIT = "Enrolled at the centre"
+REGULAR_VISIT = "Roshan Mustaqbil visit"
 AGE_BUCKETS = ((15, "Below 15"), (18, "15–17"), (22, "18–21"), (26, "22–25"), (31, "26–30"), (999, "Above 30"))
 # Career goals keep one colour everywhere in the app; the key maps to CSS.
 GOAL_ORDER = ("Defence", "UPSC / Civil Services", "NEET UG", "NEET PG", "Other")
@@ -51,39 +57,15 @@ CALL_BACK_AFTER_DAYS = {"Plans to Return": 14, "Unable to Contact": RETRY_AFTER_
 # Visits needed for a day to count as a day the centre was open.
 OPEN_DAY_MIN_VISITS = 5
 
-# Staff roles, lowest to highest. Superusers are managers.
-ROLE_GROUPS = {"frontdesk": "RM Front desk", "coordinator": "RM Coordinator", "manager": "RM Manager"}
-ROLE_LEVELS = {"frontdesk": 1, "coordinator": 2, "manager": 3}
-ROLE_LABELS = {"frontdesk": "Front desk", "coordinator": "Coordinator", "manager": "Manager"}
-ROLE_HELP = {
-    "frontdesk": "Marks attendance, enrolls new students and looks up a student.",
-    "coordinator": "Everything the front desk does, plus student lists, follow-up calls, imports, exports and analytics.",
-    "manager": "Everything, plus adding staff and resetting their passwords.",
-}
+# Enrollment dates before this are almost certainly typing mistakes.
+EARLIEST_ENROLLMENT = date(2015, 1, 1)
 
 
-# ── Roles ────────────────────────────────────────────────────────────────
+# ── Access ───────────────────────────────────────────────────────────────
 
-def role_of(user):
-    """The user's RM role key, or None when they have no access."""
-    if not user or not user.is_authenticated or not user.is_active:
-        return None
-    if user.is_superuser:
-        return "manager"
-    cached = getattr(user, "_rm_role", "unset")
-    if cached != "unset":
-        return cached
-    names = set(user.groups.values_list("name", flat=True))
-    role = next((key for key in ("manager", "coordinator", "frontdesk") if ROLE_GROUPS[key] in names), None)
-    if role is None and user.has_perm("employee.view_employee"):
-        role = "coordinator"  # HR administrators from before roles existed
-    user._rm_role = role
-    return role
-
-
-def has_role(user, minimum):
-    role = role_of(user)
-    return bool(role) and ROLE_LEVELS[role] >= ROLE_LEVELS[minimum]
+def is_centre_admin(user):
+    """The centre has one sign-in: the administrator, who does everything."""
+    return bool(user and user.is_authenticated and user.is_active and user.is_superuser)
 
 
 # ── Phones ───────────────────────────────────────────────────────────────
@@ -123,8 +105,9 @@ def rm_visits():
 def with_last_visit(queryset, today=None):
     """Annotate each student with their latest visit and number of visits.
 
-    The enrollment day counts as a visit even if no attendance record
-    exists for it (older data), so ``last_visit`` is never empty.
+    The enrollment day always counts as a visit, even if no attendance
+    record exists for it (older data), so ``last_visit`` is never earlier
+    than the enrollment date and never empty.
     """
     today = today or timezone.localdate()
     latest = (
@@ -135,8 +118,9 @@ def with_last_visit(queryset, today=None):
         Attendance.objects.filter(employee_id=OuterRef("pk"), attendance_date__lte=today)
         .order_by().values("employee_id").annotate(total=Count("id")).values("total")
     )
+    registered = F("rm_profile__registration_date")
     return queryset.annotate(
-        last_visit=Coalesce(Subquery(latest), F("rm_profile__registration_date")),
+        last_visit=Greatest(Coalesce(Subquery(latest), registered), registered),
         visits=Coalesce(Subquery(visits, output_field=IntegerField()), 0),
     )
 
@@ -165,20 +149,33 @@ def no_return_q(today=None):
     )
 
 
+def new_no_return_q(today=None):
+    """``no_return_q`` limited to students who enrolled in the last
+    NEW_NO_RETURN_MAX_DAYS days: the first call list."""
+    today = today or timezone.localdate()
+    return no_return_q(today) & Q(rm_profile__registration_date__gte=today - timedelta(days=NEW_NO_RETURN_MAX_DAYS))
+
+
 def is_no_return(last_visit, registered, status, today=None):
-    today = today or date.today()
+    today = today or timezone.localdate()
     if status == MOVED_ON or not registered or registered > today - timedelta(days=NO_RETURN_AFTER_DAYS):
         return False
     return not last_visit or last_visit <= registered
 
 
+def is_new_no_return(last_visit, registered, status, today=None):
+    today = today or timezone.localdate()
+    return is_no_return(last_visit, registered, status, today) and registered >= today - timedelta(days=NEW_NO_RETURN_MAX_DAYS)
+
+
 def engagement_status(last_visit, today=None, outcome="", registered=None):
     if outcome:
         return MOVED_ON
-    last_visit = last_visit or registered  # enrolling is a visit
+    # Enrolling is a visit: the last visit is never before the enrollment day.
+    last_visit = max(filter(None, (last_visit, registered)), default=None)
     if not last_visit:
         return "Inactive"
-    elapsed = ((today or date.today()) - last_visit).days
+    elapsed = ((today or timezone.localdate()) - last_visit).days
     if elapsed < ACTIVE_DAYS:
         return "Active"
     if elapsed < DORMANT_DAYS:
@@ -202,7 +199,7 @@ def needs_call(status, last_visit, profile, today=None):
     ``profile`` is a mapping with last_followup_date, next_call_date,
     current_status and registration_date.
     """
-    today = today or date.today()
+    today = today or timezone.localdate()
     no_return = is_no_return(last_visit, profile.get("registration_date"), status, today)
     if status not in LAPSED and not no_return:
         return False
@@ -239,7 +236,7 @@ def age_q(label, today=None):
 def age_of(student, today=None):
     if not student.dob:
         return None
-    today = today or date.today()
+    today = today or timezone.localdate()
     return today.year - student.dob.year - ((today.month, today.day) < (student.dob.month, student.dob.day))
 
 
@@ -250,28 +247,10 @@ def age_group(student, today=None):
     return next(label for upper, label in AGE_BUCKETS if age < upper)
 
 
-def attendance_summary(students=None, today=None):
-    today = today or date.today()
-    students = list(students if students is not None else student_queryset())
-    ids = [student.id for student in students]
-    last_visits = dict(
-        Attendance.objects.filter(employee_id_id__in=ids, attendance_date__lte=today)
-        .values("employee_id_id").annotate(last=Max("attendance_date"))
-        .values_list("employee_id_id", "last")
-    )
-    return last_visits
-
-
-def engagement_for_students(students=None, today=None):
-    today = today or date.today()
-    students = list(students if students is not None else student_queryset())
-    last_visits = attendance_summary(students, today)
-    return [engagement_row(student, last_visits.get(student.id), today) for student in students]
-
-
 def engagement_row(student, last_visit, today=None):
-    today = today or date.today()
-    last_visit = last_visit or student.rm_profile.registration_date
+    today = today or timezone.localdate()
+    registered = student.rm_profile.registration_date
+    last_visit = max(filter(None, (last_visit, registered)), default=None)
     status = engagement_status(last_visit, today, student.rm_profile.outcome)
     return {
         "student": student,
@@ -283,16 +262,9 @@ def engagement_row(student, last_visit, today=None):
     }
 
 
-def first_visits(ids=None):
-    queryset = rm_visits()
-    if ids is not None:
-        queryset = queryset.filter(employee_id__in=ids)
-    return dict(queryset.order_by().values("employee_id").annotate(first=Min("attendance_date")).values_list("employee_id", "first"))
-
-
 # ── Attendance ───────────────────────────────────────────────────────────
 
-def mark_student_present(student, day=None, actor=None, note="Roshan Mustaqbil visit"):
+def mark_student_present(student, day=None, actor=None, note=REGULAR_VISIT):
     """Record one RM visit per student per day.
 
     ``day`` defaults to today (with the current time). A back-dated visit
@@ -331,8 +303,78 @@ def mark_student_present(student, day=None, actor=None, note="Roshan Mustaqbil v
 
 
 def record_enrollment_visit(student, day, actor=None):
-    """Students enroll in person, so enrolling marks them present that day."""
-    return mark_student_present(student, day=day, actor=actor, note=ENROLLMENT_VISIT)
+    """Students enroll in person, so enrolling marks them present that day.
+
+    If they were already marked present that day, that visit becomes the
+    enrollment visit.
+    """
+    record, created = mark_student_present(student, day=day, actor=actor, note=ENROLLMENT_VISIT)
+    if record.request_description != ENROLLMENT_VISIT:
+        Attendance.objects.filter(pk=record.pk).update(request_description=ENROLLMENT_VISIT)
+        record.request_description = ENROLLMENT_VISIT
+    return record, created
+
+
+def move_enrollment_visit(student, new_day):
+    """Keep the enrollment visit on the (corrected) enrollment date.
+
+    The old enrollment visit goes: removed if it only stood for the
+    enrollment, kept as an ordinary visit if the student really checked in
+    that day. A visit already on the new day becomes the enrollment visit.
+    Returns how many visits are now dated before the enrollment date.
+    """
+    old_visits = Attendance.objects.filter(employee_id=student, request_description=ENROLLMENT_VISIT).exclude(attendance_date=new_day)
+    for visit in old_visits:
+        if visit.attendance_clock_in:
+            Attendance.objects.filter(pk=visit.pk).update(request_description=REGULAR_VISIT)
+        else:
+            visit.delete()
+    if new_day <= timezone.localdate():
+        existing = Attendance.objects.filter(employee_id=student, attendance_date=new_day).first()
+        if existing:
+            Attendance.objects.filter(pk=existing.pk).update(request_description=ENROLLMENT_VISIT)
+        else:
+            Attendance.objects.create(
+                employee_id=student, attendance_date=new_day, attendance_clock_in_date=new_day,
+                attendance_worked_hour="00:00", minimum_hour="00:00", request_description=ENROLLMENT_VISIT,
+            )
+    return Attendance.objects.filter(employee_id=student, attendance_date__lt=new_day).count()
+
+
+def delete_students(ids):
+    """Remove students completely: visits, profile and calls.
+
+    Returns (students, visits) removed. A student the HR side still
+    protects is switched off instead, which hides them everywhere.
+    """
+    from django.db.models import ProtectedError
+
+    from attendance.models import AttendanceActivity, AttendanceLateComeEarlyOut
+    from employee.models import Employee, StudentProfile
+
+    from django.apps import apps
+
+    ids = list(ids)
+    if apps.is_installed("payroll"):
+        # Contracts the HR side once made for form-enrolled students.
+        apps.get_model("payroll", "Contract").objects.entire().filter(employee_id__in=ids).delete()
+    visits = Attendance.objects.filter(employee_id__in=ids)
+    removed = visits.count()
+    AttendanceLateComeEarlyOut.objects.filter(attendance_id__in=visits).delete()
+    AttendanceActivity.objects.filter(employee_id__in=ids).delete()
+    visits.delete()  # per-row delete signals also clear work records
+    StudentProfile.objects.filter(employee_id__in=ids).delete()  # calls go with them
+    try:
+        Employee.objects.filter(id__in=ids).delete()
+    except ProtectedError:
+        for student_id in ids:
+            try:
+                Employee.objects.filter(id=student_id).delete()
+            except ProtectedError:
+                # Kept for the HR record that protects it, but out of the
+                # way: its email and registration number are free again.
+                Employee.objects.filter(id=student_id).update(is_active=False, badge_id=None, email=f"removed-{student_id}@rm.removed")
+    return len(ids), removed
 
 
 def visit_summary(ids=None):

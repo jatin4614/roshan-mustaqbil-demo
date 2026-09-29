@@ -20,6 +20,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.templatetags.static import static
 from django.urls import reverse, reverse_lazy
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from PIL import Image
 
@@ -795,7 +796,9 @@ class Employee(models.Model):
             user.user_permissions.add(view_ownprofile)
             user.user_permissions.add(change_ownprofile)
 
-        if not hasattr(self, "employee_work_info"):
+        # Students have no HR work record (nor the payroll contract one would
+        # bring): like imported students, they are records, not staff.
+        if not hasattr(self, "employee_work_info") and not getattr(self, "skip_user_creation", False):
             EmployeeWorkInformation.objects.get_or_create(employee_id=self)
             return self.save()
 
@@ -906,7 +909,7 @@ class StudentProfile(models.Model):
     expectations = models.TextField(blank=True)
     requirements = models.JSONField(default=list, blank=True)
     requirements_other = models.CharField(max_length=200, blank=True)
-    registration_date = models.DateField(default=date.today)
+    registration_date = models.DateField(default=timezone.localdate)
     institution = models.CharField(max_length=200, blank=True)
     guardian_name = models.CharField(max_length=200, blank=True)
     guardian_phone = models.CharField(max_length=25, blank=True)

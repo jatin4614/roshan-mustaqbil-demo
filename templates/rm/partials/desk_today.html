@@ -3,7 +3,7 @@
     <div class="rm-today__count">{{ today_count }}<small>student{{ today_count|pluralize }}</small></div>
     <div class="rm-card__head" style="margin: 20px 0 2px">
         <h2 class="rm-card__title">Latest check-ins</h2>
-        {% if can_correct %}<a class="rm-card__link" href="{% url 'rm-attendance-dashboard' %}">Attendance dashboard</a>{% endif %}
+        <a class="rm-card__link" href="{% url 'rm-attendance-dashboard' %}">Attendance dashboard</a>
     </div>
     <ul class="rm-list rm-list--scroll">
         {% for checkin in checkins %}
@@ -17,12 +17,16 @@
                 </a>
                 <span style="display: inline-flex; align-items: center; gap: 2px">
                     <span class="rm-list__time">{{ checkin.record.attendance_clock_in|time:"g:i A"|default:"Register" }}</span>
-                    <form method="post" action="{% url 'rm-undo-checkin' %}" hx-post="{% url 'rm-undo-checkin' %}" hx-swap="none" hx-disabled-elt="find button">
-                        {% csrf_token %}
-                        <input type="hidden" name="record_id" value="{{ checkin.record.id }}">
-                        <input type="hidden" name="on" value="{{ day|date:'Y-m-d' }}">
-                        <button class="rm-icon-btn" type="submit" aria-label="Remove {{ checkin.student.get_full_name }}'s check-in" data-tip="Remove this check-in">×</button>
-                    </form>
+                    {% if checkin.is_enrollment %}
+                        <span class="rm-tag rm-tag--new" data-tip="Enrolled at the centre today. To undo an enrollment, remove the student from their details page.">Enrolled</span>
+                    {% else %}
+                        <form method="post" action="{% url 'rm-undo-checkin' %}" hx-post="{% url 'rm-undo-checkin' %}" hx-swap="none" hx-disabled-elt="find button">
+                            {% csrf_token %}
+                            <input type="hidden" name="record_id" value="{{ checkin.record.id }}">
+                            <input type="hidden" name="on" value="{{ day|date:'Y-m-d' }}">
+                            <button class="rm-icon-btn" type="submit" aria-label="Remove {{ checkin.student.get_full_name }}'s check-in" data-tip="Remove this check-in">×</button>
+                        </form>
+                    {% endif %}
                 </span>
             </li>
         {% empty %}

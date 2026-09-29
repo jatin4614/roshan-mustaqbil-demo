@@ -11,8 +11,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from base.rm import (
-    AGE_BUCKETS, ENGAGEMENT_KEYS, ENGAGEMENT_LABELS, GOAL_KEYS, NO_VALUE, NOT_RECORDED,
-    OPEN_DAY_MIN_VISITS, engagement_status, initials, is_no_return, rm_visits, student_queryset,
+    AGE_BUCKETS, ENGAGEMENT_KEYS, ENGAGEMENT_LABELS, ENROLLMENT_VISIT, GOAL_KEYS, NO_RETURN_AFTER_DAYS, NO_VALUE,
+    NOT_RECORDED, OPEN_DAY_MIN_VISITS, engagement_status, initials, is_no_return, rm_visits, student_queryset,
     target_label, with_last_visit,
 )
 from employee.models import Employee, StudentProfile
@@ -62,6 +62,8 @@ def student_values(today, queryset=None):
         row["status"] = engagement_status(row["last_visit"], today, row["outcome"], row["registration_date"])
         row["no_return"] = is_no_return(row["last_visit"], row["registration_date"], row["status"], today)
         row["came_back"] = bool(row["last_visit"] and row["registration_date"] and row["last_visit"] > row["registration_date"])
+        # Enrolled less than a week ago and not back yet: too early to say.
+        row["too_early"] = bool(not row["came_back"] and row["registration_date"] and (today - row["registration_date"]).days < NO_RETURN_AFTER_DAYS)
         row["name"] = f"{row['employee_first_name']} {row['employee_last_name'] or ''}".strip()
         row["goal"] = row["career_goal"] or NOT_RECORDED
     return rows
@@ -89,23 +91,23 @@ def is_open(count):
 def typical_by_now(today, now=None, weeks=4):
     """Average check-ins by this time of day on recent open days.
 
-    After closing time this is simply the average open day.
+    Only check-ins with a time count (visits entered later from a paper
+    register have none), so after closing time this is the average open
+    day's check-ins.
     """
     now = now or timezone.localtime().time()
     start = today - timedelta(days=weeks * 7)
-    per_day = visits_per_day(start, today - timedelta(days=1))
+    timed = rm_visits().filter(attendance_date__range=(start, today - timedelta(days=1)), attendance_clock_in__isnull=False)
+    per_day = Counter(timed.values_list("attendance_date", flat=True))
     open_days = [day for day, count in per_day.items() if is_open(count)]
     if not open_days:
         return None
-    by_now = Counter(
-        rm_visits().filter(attendance_date__in=open_days, attendance_clock_in__lte=now)
-        .values_list("attendance_date", flat=True)
-    )
-    return round(sum(by_now.values()) / len(open_days))
+    by_now = timed.filter(attendance_date__in=open_days, attendance_clock_in__lte=now).count()
+    return round(by_now / len(open_days))
 
 
 def day_checkins(day, limit=None):
-    visits = rm_visits().filter(attendance_date=day).select_related("employee_id", "employee_id__rm_profile", "created_by").order_by("-attendance_clock_in", "-id")
+    visits = rm_visits().filter(attendance_date=day).select_related("employee_id", "employee_id__rm_profile").order_by("-attendance_clock_in", "-id")
     return visits[:limit] if limit else visits
 
 
@@ -115,6 +117,7 @@ def checkin_rows(visits):
             "record": visit, "student": visit.employee_id, "initials": initials(visit.employee_id),
             "goal": visit.employee_id.rm_profile.career_goal,
             "goal_key": GOAL_KEYS.get(visit.employee_id.rm_profile.career_goal, "none"),
+            "is_enrollment": visit.request_description == ENROLLMENT_VISIT,
         }
         for visit in visits
     ]

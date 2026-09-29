@@ -1,12 +1,12 @@
 {% extends "index.html" %}
-{% block title %}Remove a visit | Roshan Mustaqbil{% endblock %}
+{% block title %}{% if is_enrollment %}The enrollment day{% else %}Remove a visit{% endif %} | Roshan Mustaqbil{% endblock %}
 {% block content %}
 <div class="rm-page rm-page--narrow">
     <header class="rm-head">
         <div>
             <a class="rm-back" href="{{ back }}">‹ Back</a>
-            <h1 class="rm-head__title">Remove this visit?</h1>
-            <p class="rm-head__sub">{% if record.request_description == "Enrolled at the centre" %}This is the day {{ record.employee_id.employee_first_name }} enrolled. Remove it only if the enrollment date was wrong: correct the date on their details instead.{% else %}Use this when a student was marked present by mistake. It can't be undone, but you can mark them again.{% endif %}</p>
+            <h1 class="rm-head__title">{% if is_enrollment %}This is the day {{ record.employee_id.employee_first_name }} enrolled{% else %}Remove this visit?{% endif %}</h1>
+            <p class="rm-head__sub">{% if is_enrollment %}Students enroll in person, so the enrollment day always counts as a visit and can't be removed on its own.{% else %}Use this when a student was marked present by mistake. It can't be undone, but you can mark them again.{% endif %}</p>
         </div>
     </header>
     <section class="rm-card">
@@ -14,14 +14,21 @@
             <div><dt>Student</dt><dd>{{ record.employee_id.get_full_name }} ({{ record.employee_id.badge_id }})</dd></div>
             <div><dt>Date</dt><dd>{{ record.attendance_date|date:"l, j F Y" }}</dd></div>
             <div><dt>Checked in</dt><dd>{{ record.attendance_clock_in|time:"g:i A"|default:"From a register" }}</dd></div>
-            <div><dt>Marked by</dt><dd>{% if record.created_by %}{{ record.created_by.get_username }}{% else %}—{% endif %}</dd></div>
         </dl>
-        <form method="post" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ back }}">
-            <a class="rm-btn rm-btn--secondary" href="{{ back }}">Keep it</a>
-            <button class="rm-btn rm-btn--primary" type="submit" style="background: var(--rm-danger)">Remove visit</button>
-        </form>
+        {% if is_enrollment %}
+            <p class="rm-card__meta" style="margin: 18px 0 0">If the enrollment date is wrong, correct it on their details and this visit moves with it. If they were enrolled by mistake (a duplicate, say), remove the student.</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 22px">
+                <a class="rm-btn rm-btn--secondary" href="{% url 'rm-remove-student' record.employee_id_id %}">Remove the student</a>
+                <a class="rm-btn rm-btn--primary" href="{% url 'rm-edit-student' record.employee_id_id %}">Correct the enrollment date</a>
+            </div>
+        {% else %}
+            <form method="post" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ back }}">
+                <a class="rm-btn rm-btn--secondary" href="{{ back }}">Keep it</a>
+                <button class="rm-btn rm-btn--danger" type="submit">Remove visit</button>
+            </form>
+        {% endif %}
     </section>
 </div>
 {% endblock %}

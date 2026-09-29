@@ -63,6 +63,27 @@ if command -v msgfmt >/dev/null 2>&1; then
   fi
 fi
 
+# Roshan Mustaqbil data set-up, run once per start after migrations:
+#   RM_REMOVE_DEMO_DATA=1  removes the demo students (going live, where the
+#                          host has no shell, e.g. Render's free plan)
+#   RM_SEED_DEMO_DATA=1    creates the administrator and loads the demo
+#                          students (later starts only add the day's check-ins)
+# The administrator is created whenever DEMO_ADMIN_PASSWORD is set.
+rm_data_tasks() {
+  if [ "${RM_REMOVE_DEMO_DATA:-0}" = "1" ]; then
+    python manage.py seed_youth_centre_demo --remove
+  fi
+  if [ -n "${DEMO_ADMIN_PASSWORD:-}" ]; then
+    python manage.py bootstrap_roshan_mustaqbil_demo
+  elif [ "${RM_SEED_DEMO_DATA:-0}" = "1" ]; then
+    echo "ERROR: set DEMO_ADMIN_PASSWORD (the administrator's password) to load the demo."
+    exit 1
+  fi
+  if [ "${RM_SEED_DEMO_DATA:-0}" = "1" ] && [ "${RM_REMOVE_DEMO_DATA:-0}" != "1" ]; then
+    python manage.py seed_youth_centre_demo
+  fi
+}
+
 # Render's free web services require a listening port while a fresh database is
 # being migrated. This temporary listener keeps the deploy alive during that
 # one-time release task; it is stopped before Gunicorn starts serving Django.
@@ -95,14 +116,15 @@ PY
   trap cleanup_temporary_listener EXIT
 
   python manage.py migrate --noinput
-  if [ "${RM_SEED_DEMO_DATA:-0}" = "1" ]; then
-    python manage.py bootstrap_roshan_mustaqbil_demo --demo-staff
-    python manage.py seed_youth_centre_demo
-  fi
+  rm_data_tasks
   python manage.py collectstatic --noinput --clear
 
   cleanup_temporary_listener
   trap - EXIT
+  # Release tasks are done: start serving straight away rather than
+  # running them all a second time below.
+  echo "Starting server..."
+  exec "$@"
 fi
 
 # Run migrations
@@ -120,10 +142,7 @@ fi
 
 python manage.py migrate --noinput
 
-if [ "${RM_SEED_DEMO_DATA:-0}" = "1" ]; then
-  python manage.py bootstrap_roshan_mustaqbil_demo --demo-staff
-  python manage.py seed_youth_centre_demo
-fi
+rm_data_tasks
 
 # Collect static files.
 #

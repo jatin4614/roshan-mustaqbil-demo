@@ -1,0 +1,5 @@
+<nav class="rm-tabs" aria-label="Lists" id="rm-call-tabs"{% if oob %} hx-swap-oob="true"{% endif %}>
+    {% for item in queues %}
+        <a href="?queue={{ item.key|urlencode }}{% if filter_query %}&amp;{{ filter_query }}{% endif %}"{% if item.key == queue %} aria-current="true"{% endif %}>{{ item.label }} <span>{{ item.count }}</span></a>
+    {% endfor %}
+</nav>

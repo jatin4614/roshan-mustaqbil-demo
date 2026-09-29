@@ -64,32 +64,32 @@ SUBMENUS = [
 
 if settings.YOUTH_CENTRE_MODE:
     MENU = _("Students")
-    ACCESSIBILITY = "base.rm_access.sidebar_frontdesk"
+    ACCESSIBILITY = "base.rm_access.sidebar_admin"
     SUBMENUS = [
         {
             "menu": _("All students"),
             "redirect": reverse_lazy("rm-students"),
-            "accessibility": "base.rm_access.sidebar_coordinator",
+            "accessibility": "base.rm_access.sidebar_admin",
         },
         {
             "menu": _("Follow-up calls"),
             "redirect": reverse_lazy("rm-calls"),
-            "accessibility": "base.rm_access.sidebar_coordinator",
+            "accessibility": "base.rm_access.sidebar_admin",
         },
         {
             "menu": _("Inactive students"),
             "redirect": reverse_lazy("rm-inactive-students"),
-            "accessibility": "base.rm_access.sidebar_coordinator",
+            "accessibility": "base.rm_access.sidebar_admin",
         },
         {
             "menu": _("Enroll student"),
             "redirect": reverse_lazy("rm-enroll-student"),
-            "accessibility": "base.rm_access.sidebar_frontdesk",
+            "accessibility": "base.rm_access.sidebar_admin",
         },
         {
             "menu": _("Import from a spreadsheet"),
             "redirect": reverse_lazy("rm-import"),
-            "accessibility": "base.rm_access.sidebar_coordinator",
+            "accessibility": "base.rm_access.sidebar_admin",
         },
     ]
 
