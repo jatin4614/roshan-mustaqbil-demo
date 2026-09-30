@@ -26,7 +26,7 @@
                 <input id="rm-desk-search" name="q" type="search" value="{{ query }}" autocomplete="off" spellcheck="false"
                        class="rm-control rm-control--search rm-control--xl" placeholder="Registration no., phone or name"
                        hx-get="{% url 'youth-daily-attendance' %}" hx-vals='{"mark_exact": ""}' hx-trigger="input changed delay:250ms" hx-include="closest form" hx-swap="none" hx-sync="closest form:drop">
-                <p class="rm-desk__hint">Start typing to search. Press <kbd>Enter</kbd> on a registration or phone number to mark that student straight away. Use <kbd>↓</kbd> to move through the results.</p>
+                <p class="rm-desk__hint">{% if is_today %}Type a registration or phone number and press <kbd>Enter</kbd> to check that student in. Press <kbd>Enter</kbd> again when they leave to check them out.{% else %}Type a registration or phone number and press <kbd>Enter</kbd> to mark them present for this day.{% endif %} Use <kbd>↓</kbd> to move through the results.</p>
                 <span class="rm-busy">Working…</span>
             </form>
             <div class="rm-flash rm-flash--danger" data-live-error hidden role="alert" style="margin-top: 16px"><span></span><a class="rm-btn rm-btn--secondary rm-btn--sm" hidden></a></div>

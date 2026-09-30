@@ -18,9 +18,9 @@ from base.rm import (
     AGE_BUCKETS, ALL_STATUSES, EARLIEST_ENROLLMENT, ENGAGEMENT_HELP, ENGAGEMENT_LABELS, ENROLLMENT_VISIT, GOAL_KEYS,
     LAPSED, MOVED_ON, NEW_NO_RETURN_HELP, NEW_NO_RETURN_LABEL, NO_RETURN_HELP, NO_RETURN_LABEL, NO_STATUS, NO_VALUE,
     NOT_RECORDED, QUALIFICATIONS, RETRY_RESULTS, age_group, age_q, delete_students, engagement_q, engagement_row,
-    engagement_status, initials, is_no_return, mark_student_present, move_enrollment_visit,
-    needs_call, needs_call_q, new_no_return_q, no_return_q, normalize_phone, record_enrollment_visit, record_followup,
-    rm_visits, student_queryset, target_label, valid_mobile, with_last_visit,
+    engagement_status, initials, is_no_return, mark_student_present, move_enrollment_visit, needs_call, needs_call_q,
+    new_no_return_q, no_return_q, normalize_phone, record_enrollment_visit, record_followup, restore_followup_status,
+    rm_visits, stay_label, stay_minutes, student_queryset, target_label, valid_mobile, with_last_visit,
 )
 from base.rm_access import rm_required
 from base.rm_common import (
@@ -430,16 +430,21 @@ def enroll_student(request, student_id=None):
             profile.registration_date = values.get("registration_date") or profile.registration_date or today
             profile.save()
             earlier_visits = 0
+            visit = None
             if is_new:
                 # Students enroll in person, so they are here today (or were,
                 # on the date of an older paper registration).
-                record_enrollment_visit(student, profile.registration_date, actor=request.user)
+                visit, _ = record_enrollment_visit(student, profile.registration_date, actor=request.user)
             elif old_enrollment != profile.registration_date:
                 earlier_visits = move_enrollment_visit(student, profile.registration_date)
             if earlier_visits:
                 messages.info(request, f"{earlier_visits} visit{'s are' if earlier_visits > 1 else ' is'} dated before the new enrollment date. Check the date, or remove those visits from the profile.")
             if is_new:
-                messages.success(request, f"{student.get_full_name()} is enrolled as {registration} and marked present{' for ' + profile.registration_date.strftime('%d %b %Y') if profile.registration_date != today else ''}.")
+                if visit.attendance_clock_in and profile.registration_date == today:
+                    present = f"checked in at {visit.attendance_clock_in.strftime('%I:%M %p').lstrip('0')}"
+                else:
+                    present = f"marked present{' for ' + profile.registration_date.strftime('%d %b %Y') if profile.registration_date != today else ''}"
+                messages.success(request, f"{student.get_full_name()} is enrolled as {registration} and {present}.")
                 if from_desk:
                     return redirect("youth-daily-attendance")
             else:
@@ -458,9 +463,11 @@ def student_profile(request, student_id):
     call_form = CallForm(request.POST if request.POST.get("action") == "follow_up" else None)
     if request.method == "POST":
         action = request.POST.get("action")
-        if action == "mark_present":
-            _, created = mark_student_present(student, actor=request.user)
-            messages.success(request, f"{student.get_full_name()} marked present." if created else f"{student.get_full_name()} was already marked present today.")
+        if action in {"check_in", "check_out", "mark_present"}:
+            from base.rm_attendance import _desk_action, _flash
+
+            record, done = _desk_action(student, today, today, "out" if action == "check_out" else "in", request.user)
+            messages.success(request, _flash(student, record, done)["text"])
             return redirect("rm-student-profile", student_id=student.id)
         if action == "follow_up" and call_form.is_valid():
             call_form.save(profile, request.user)
@@ -473,6 +480,9 @@ def student_profile(request, student_id):
             return redirect("rm-student-profile", student_id=student.id)
     visits = rm_visits().filter(employee_id=student).order_by("-attendance_date", "-attendance_clock_in")
     visit_dates = list(visits.values_list("attendance_date", flat=True))
+    today_visit = visits.filter(attendance_date=today).first()
+    recent_stays = [stay_minutes(visit) for visit in visits.filter(attendance_date__gte=today - timedelta(days=89))]
+    recent_stays = [minutes for minutes in recent_stays if minutes is not None]
     engagement = engagement_row(student, visit_dates[0] if visit_dates else None, today)
     month_start = today.replace(day=1)
     no_return = is_no_return(engagement["last_visit"], profile.registration_date, engagement["status"], today)
@@ -485,8 +495,10 @@ def student_profile(request, student_id):
         "goal_key": GOAL_KEYS.get(profile.career_goal, "none"), "age_group": age_group(student, today),
         "target": target_label(profile),
         "purpose_label": PURPOSE_LABELS.get(profile.purpose_of_rm, profile.purpose_of_rm),
-        "visits": visits[:12], "total_visits": len(visit_dates), "month_visits": sum(1 for day in visit_dates if day >= month_start),
-        "present_today": bool(visit_dates) and visit_dates[0] == today,
+        "visits": [{"record": visit, "stay": stay_label(stay_minutes(visit))} for visit in visits[:12]],
+        "total_visits": len(visit_dates), "month_visits": sum(1 for day in visit_dates if day >= month_start),
+        "present_today": bool(visit_dates) and visit_dates[0] == today, "today_visit": today_visit,
+        "typical_stay": stay_label(round(charts.median(recent_stays))) if recent_stays else "", "stays_counted": len(recent_stays),
         "calendar": charts.visit_calendar(visit_dates, today, weeks=53), "call_form": call_form,
         "calls": profile.followups.select_related("created_by")[:10], "status_labels": STATUS_LABELS,
         "enrollment_visit": ENROLLMENT_VISIT, "no_return": no_return, "no_return_label": NO_RETURN_LABEL,
@@ -656,15 +668,15 @@ def _filter_query(goal, locality):
 def delete_followup(request, followup_id):
     entry = get_object_or_404(StudentFollowUp, id=followup_id)
     profile = entry.student
-    if StudentProfile.STATUS_OUTCOMES.get(entry.result) == profile.outcome:
-        profile.outcome, profile.outcome_date = "", None
-        profile.save(update_fields=["outcome", "outcome_date"])
     entry.delete()
-    latest = profile.followups.first()
-    profile.current_status = latest.result if latest else ""
+    latest = profile.followups.order_by("-called_on", "-created_at").first()
     profile.last_followup_date = latest.called_on if latest else None
     profile.followup_notes = latest.notes if latest else ""
-    profile.next_call_date = latest.next_call_date if latest else None
-    profile.save(update_fields=["current_status", "last_followup_date", "followup_notes", "next_call_date"])
+    # The status comes from the calls that are left, unless the student has
+    # come in since the latest of them.
+    profile.current_status = profile.inactivity_reason = profile.outcome = ""
+    profile.next_call_date = profile.outcome_date = None
+    profile.save(update_fields=["last_followup_date", "followup_notes", "current_status", "inactivity_reason", "outcome", "next_call_date", "outcome_date"])
+    restore_followup_status(profile.employee)
     messages.success(request, "Call removed.")
     return redirect("rm-student-profile", student_id=profile.employee_id)

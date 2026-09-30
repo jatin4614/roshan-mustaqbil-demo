@@ -13,7 +13,7 @@ data was loaded (a rehearsal's walk-ins and sample imports).
 """
 
 import random
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -216,6 +216,25 @@ def arrival_time(rng):
     return time(minutes // 60, minutes % 60)
 
 
+CLOSING = time(18, 0)
+
+
+def departure(number, day, arrived):
+    """When a student left: morning arrivals stay about three and a half
+    hours, afternoon ones about two, nobody past closing. About 1 in 14
+    visits has no check-out, as happens at a real desk."""
+    rng = random.Random(f"leave-{number}-{day.isoformat()}")
+    if rng.random() < 0.07:
+        return None
+    morning = arrived.hour < 13
+    minutes = max(35, int(rng.gauss(215 if morning else 120, 55 if morning else 35)))
+    start = datetime.combine(day, arrived)
+    leave = min(start + timedelta(minutes=minutes), datetime.combine(day, CLOSING) - timedelta(minutes=rng.randint(0, 20)))
+    if leave <= start:
+        leave = start + timedelta(minutes=30)
+    return leave.time().replace(second=0)
+
+
 def active_rate(number):
     return pick(random.Random(f"plan-{number}"), ((0.8, 20), (0.35, 35), (0.12, 45)))
 
@@ -290,6 +309,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--count", type=int, default=960)
+        parser.add_argument("--top-up", action="store_true", help="Only add check-ins and check-outs for demo students already loaded; never create students. Does nothing when no demo data is loaded.")
         parser.add_argument("--reset", action="store_true", help="Delete earlier demo students, visits and calls first.")
         parser.add_argument("--remove", action="store_true", help="Delete the demo students, visits and calls, then stop.")
 
@@ -326,7 +346,18 @@ class Command(BaseCommand):
         existing = {student.email: student for student in Employee.objects.filter(email__endswith="@rm.demo", is_active=True)}
         weekdays = {day.day: day for day in EmployeeShiftDay.objects.all()}
         self.weekday = lambda day: weekdays.get(WEEKDAYS[day.weekday()])
+        self.today, self.now = today, now
+        if options["top_up"] and not existing:
+            self.stdout.write("No demo data is loaded, so there's nothing to top up.")
+            return
         attendance = self._top_up(existing, today, now) if existing else []
+        left = self._check_out_departed(existing, today, now) if existing else 0
+        if options["top_up"]:
+            before = Attendance.objects.filter(employee_id__email__endswith="@rm.demo").count()
+            Attendance.objects.bulk_create(attendance, batch_size=500, ignore_conflicts=True)
+            added = Attendance.objects.filter(employee_id__email__endswith="@rm.demo").count() - before
+            self.stdout.write(self.style.SUCCESS(f"Demo data topped up: {added} new check-ins, {left} check-outs."))
+            return
 
         people, created, previous = {}, [], None
         for number in range(1, count + 1):
@@ -427,19 +458,63 @@ class Command(BaseCommand):
         ))
 
     def _visit(self, student, day, arrived, note):
+        number = int(student.email[3:7])
+        planned = departure(number, day, arrived) if arrived else None
+        left = planned
+        if left and day == self.today and left > self.now.time():
+            left = None  # still in the centre: the check-out is pending (see _check_out_departed)
+        minutes = int((datetime.combine(day, left) - datetime.combine(day, arrived)).total_seconds() // 60) if left else 0
         return Attendance(
             employee_id=student, attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=arrived,
-            attendance_worked_hour="00:00", minimum_hour="00:00", request_description=note, attendance_day=self.weekday(day),
+            attendance_clock_out=left, attendance_clock_out_date=day if planned else None,
+            attendance_worked_hour=f"{minutes // 60:02d}:{minutes % 60:02d}", minimum_hour="00:00", request_description=note,
+            attendance_day=self.weekday(day),
         )
+
+    def _check_out_departed(self, existing, today, now):
+        """Give demo visits the check-out the seed left pending once the
+        student's leaving time has passed.
+
+        A pending check-out is a check-out date without a time. Checking a
+        student out, back in or correcting the times at the desk clears that
+        mark, so nothing the administrator changed is overwritten. Data loaded
+        before check-outs existed (no demo visit has one) gets them all once.
+        """
+        open_visits = Attendance.objects.filter(
+            employee_id__in=existing.values(), attendance_clock_in__isnull=False, attendance_clock_out__isnull=True,
+        ).select_related("employee_id")
+        demo_visits = Attendance.objects.filter(employee_id__in=existing.values())
+        if demo_visits.filter(attendance_clock_out__isnull=False).exists():
+            open_visits = open_visits.filter(attendance_clock_out_date__isnull=False)
+        changed = []
+        for visit in open_visits:
+            left = departure(int(visit.employee_id.email[3:7]), visit.attendance_date, visit.attendance_clock_in)
+            if not left:
+                continue
+            if visit.attendance_date == today and left > now.time():
+                if not visit.attendance_clock_out_date:  # data from before check-outs: mark it pending
+                    visit.attendance_clock_out_date = visit.attendance_date
+                    changed.append(visit)
+                continue
+            minutes = int((datetime.combine(visit.attendance_date, left) - datetime.combine(visit.attendance_date, visit.attendance_clock_in)).total_seconds() // 60)
+            visit.attendance_clock_out, visit.attendance_clock_out_date = left, visit.attendance_date
+            visit.attendance_worked_hour = f"{minutes // 60:02d}:{minutes % 60:02d}"
+            changed.append(visit)
+        Attendance.objects.bulk_update(changed, ["attendance_clock_out", "attendance_clock_out_date", "attendance_worked_hour"], batch_size=500)
+        return sum(1 for visit in changed if visit.attendance_clock_out)
 
     def _top_up(self, existing, today, now):
         """Keep students who are still coming coming, up to the current time.
 
-        Students who only came to enroll stay that way (the demo's "didn't
-        come back" numbers shouldn't drift), and a missing enrollment visit
-        is put back.
+        Only arrivals since the last seed or top-up are added, so a visit the
+        administrator removed isn't put back. Students who only came to
+        enroll stay that way (the demo's "didn't come back" numbers shouldn't
+        drift), and a missing enrollment visit is put back.
         """
         students = list(existing.values())
+        # The seed's own visits have no creator (the desk and imports record the administrator).
+        last_run = Attendance.objects.filter(employee_id__in=students, created_by__isnull=True).aggregate(last=Max("created_at"))["last"]
+        last_run = timezone.localtime(last_run).replace(tzinfo=None) if last_run else None
         last_visits = dict(
             Attendance.objects.filter(employee_id__in=students).order_by().values("employee_id")
             .annotate(last=Max("attendance_date")).values_list("employee_id", "last")
@@ -458,5 +533,7 @@ class Command(BaseCommand):
             for day, arrived in sorted(visits_between(number, last + timedelta(days=1), today, active_rate(number)).items()):
                 if day == today and arrived > now.time():
                     continue
+                if last_run and datetime.combine(day, arrived) <= last_run:
+                    continue  # an earlier run already added it (or chose not to)
                 visits.append(self._visit(student, day, arrived, REGULAR_VISIT))
         return visits

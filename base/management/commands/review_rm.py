@@ -66,6 +66,15 @@ class Command(BaseCommand):
         self.verify("No visit is dated before the student enrolled", not early.exists(), self.visit_list(early))
         future = visits.filter(attendance_date__gt=today)
         self.verify("No visit is dated in the future", not future.exists(), self.visit_list(future))
+        backwards = visits.filter(attendance_clock_out__isnull=False).filter(
+            Q(attendance_clock_in__isnull=True) | Q(attendance_clock_out__lt=F("attendance_clock_in")) | ~Q(attendance_clock_out_date=F("attendance_date"))
+        )
+        self.verify("No check-out is before its check-in, and it's on the same day", not backwards.exists(), self.visit_list(backwards))
+        earlier_timed = visits.filter(attendance_date__lt=today, attendance_clock_in__isnull=False)
+        unchecked = earlier_timed.filter(attendance_clock_out__isnull=True).count()
+        share = round(unchecked * 100 / earlier_timed.count()) if earlier_timed.exists() else 0
+        self.verify(f"Most visits have a check-out ({share}% of earlier visits have none)", share <= 20,
+                    "check students out as they leave, or use Check everyone out at closing", warn_only=True)
         after_moving_on = visits.filter(
             ~Q(employee_id__rm_profile__outcome=""), attendance_date__gt=F("employee_id__rm_profile__outcome_date"),
         )

@@ -38,6 +38,8 @@ urlpatterns = [
     path("attendance-history/", rm_attendance.attendance_history, name="youth-attendance-history"),
     path("attendance-dashboard/", rm_views.attendance_dashboard, name="rm-attendance-dashboard"),
     path("mark-attendance/undo/", rm_attendance.undo_checkin, name="rm-undo-checkin"),
+    path("mark-attendance/check-out-everyone/", rm_attendance.check_out_everyone, name="rm-check-out-everyone"),
+    path("visits/<int:record_id>/", rm_attendance.remove_visit, name="rm-visit"),
     path("visits/<int:record_id>/remove/", rm_attendance.remove_visit, name="rm-remove-visit"),
     path(
         "individual-panalty-list-view/<int:pk>/",

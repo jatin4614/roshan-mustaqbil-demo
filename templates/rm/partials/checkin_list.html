@@ -8,7 +8,7 @@
                     <span class="rm-person__sub">{{ checkin.student.badge_id }}{% if checkin.goal %}, {{ checkin.goal }}{% endif %}</span>
                 </span>
             </a>
-            <span class="rm-list__time">{{ checkin.record.attendance_clock_in|time:"g:i A" }}</span>
+            <span class="rm-list__time">{% if checkin.record.attendance_clock_out %}{{ checkin.record.attendance_clock_in|time:"g:i A" }} to {{ checkin.record.attendance_clock_out|time:"g:i A" }}{% elif checkin.record.attendance_clock_in %}In since {{ checkin.record.attendance_clock_in|time:"g:i A" }}{% else %}From a register{% endif %}</span>
         </li>
     {% empty %}
         <li class="rm-empty"><b>No one has checked in yet today.</b>Check-ins appear here as students arrive.</li>

@@ -19,10 +19,11 @@ from base.rm import (
     NO_RETURN_LABEL, NO_STATUS, NO_VALUE, NOT_RECORDED, QUALIFICATIONS, rm_visits, visit_summary,
 )
 from base.rm_access import rm_required
+from base.rm import STAY_BUCKETS, in_centre_now, stay_label
 from base.rm_common import (
     OUTCOME_LABELS, PURPOSE_LABELS, STATUS_LABELS, age_label, checkin_rows,
-    day_checkins, goal_url, is_open, status_url, student_values, students_url, today_label,
-    typical_by_now, visits_per_day,
+    day_checkins, goal_url, hour_label, is_open, occupancy_by_hour, occupancy_today, status_url, stay_summary,
+    student_values, students_url, today_label, typical_by_now, visits_per_day,
 )
 from employee.models import StudentFollowUp, StudentProfile
 
@@ -133,6 +134,10 @@ def rm_dashboard(request):
     # Present today, compared with a typical day at this time.
     today_count = rm_visits().filter(attendance_date=today).count()
     typical = typical_by_now(today)
+    in_now = in_centre_now(today).count()
+    stays = stay_summary(today - timedelta(days=ACTIVE_DAYS), today - timedelta(days=1))
+    now = timezone.localtime().replace(tzinfo=None).time()
+    today_hours = occupancy_today(today, now)
 
     # How often active students come. Students who enrolled inside the
     # window haven't had 30 days yet, so they would look like rare visitors.
@@ -175,11 +180,28 @@ def rm_dashboard(request):
             for key, label, help_text in QUEUES
         ],
         "calls_week": calls_week,
+        "in_now": in_now,
+        "stay": _stay_block(stays),
+        "today_hours": charts.columns(
+            [{"label": hour_label(hour), "tip": f"At {hour_label(hour).replace(' ', ':30 ')}", "value": value} for hour, value in today_hours.items()],
+            highlight_last=True, unit="student",
+        ) if today_hours else None,
         "checkins": checkin_rows(day_checkins(today, 6)),
         "goals": charts.bars(Counter(row["goal"] for row in current), total=len(current), order=GOAL_ORDER + (NOT_RECORDED,), keys={**GOAL_KEYS, NOT_RECORDED: "muted"}, url=goal_url),
         "aftermath": aftermath, "aftermath_total": aftermath_total,
     }
     return render(request, "rm/dashboard.html", context)
+
+
+def _stay_block(stays):
+    """The "time in the centre" figures and bars for a stay_summary."""
+    keys = {label: f"age-{index + 1}" for index, (_, label) in enumerate(STAY_BUCKETS)}
+    return {
+        "typical": stay_label(stays["median"]) if stays["median"] is not None else "",
+        "count": stays["count"], "timed": stays["timed"],
+        "coverage": charts.share_label(stays["count"], stays["timed"]),
+        "bars": charts.bars(stays["buckets"], total=stays["count"], order=[label for _, label in STAY_BUCKETS], keys=keys),
+    }
 
 
 @rm_required
@@ -216,7 +238,8 @@ def attendance_dashboard(request):
         {"label": name, "tip": f"Average {full}", "value": round(weekday_totals[index] / weekday_days[index], 1) if weekday_days[index] else 0}
         for index, (name, full) in enumerate(zip(names, full_names))
     ]
-    hours = Counter(time.hour for time in visits.filter(attendance_date__in=open_days).values_list("attendance_clock_in", flat=True) if time)
+    # Arrivals outside 6 am to 10 pm are typing mistakes; they'd stretch the chart.
+    hours = Counter(time.hour for time in visits.filter(attendance_date__in=open_days).values_list("attendance_clock_in", flat=True) if time and 6 <= time.hour <= 21)
     first, last = min(list(hours) + [9]), max(list(hours) + [17])
 
     def hour_label(hour):
@@ -228,6 +251,13 @@ def attendance_dashboard(request):
         for hour in range(first, last + 1)
     ]
     per_student = Counter(visits.values_list("employee_id", flat=True))
+    # The last N full days, like the dashboard's "Time in the centre".
+    stays = stay_summary(today - timedelta(days=days), today - timedelta(days=1))
+    occupancy = occupancy_by_hour(open_days)
+    occupancy_points = [
+        {"label": hour_label(hour) if (hour - 9) % 2 == 0 else "", "tip": f"{hour_label(hour)} to {hour_label(hour + 1)}", "value": value}
+        for hour, value in occupancy.items()
+    ]
     regulars = (
         visits.values("employee_id", "employee_id__employee_first_name", "employee_id__employee_last_name", "employee_id__badge_id", "employee_id__rm_profile__career_goal")
         .annotate(total=Count("id")).order_by("-total", "employee_id__employee_first_name")[:8]
@@ -251,9 +281,11 @@ def attendance_dashboard(request):
         goal_students[goal] += 1
     intensity = {goal: round(goal_visits[goal] / goal_students[goal], 1) for goal in goal_students}
     peak = max(intensity.values(), default=0)
+    stay_by_goal = {goal or NOT_RECORDED: minutes for goal, minutes in stays["by_goal"].items()}
     goal_rows = [
-        {"label": goal, "count": intensity[goal], "share": f"{goal_students[goal]} students", "width": round(intensity[goal] / peak * 100) if peak else 0,
-         "key": GOAL_KEYS.get(goal, "muted"), "url": goal_url(goal)}
+        {"label": goal, "count": intensity[goal],
+         "share": f"{goal_students[goal]} students" + (f", stay {stay_label(stay_by_goal[goal])}" if stay_by_goal.get(goal) is not None else ""),
+         "width": round(intensity[goal] / peak * 100) if peak else 0, "key": GOAL_KEYS.get(goal, "muted"), "url": goal_url(goal)}
         for goal in GOAL_ORDER + (NOT_RECORDED,) if goal in intensity
     ]
     context = {
@@ -265,6 +297,8 @@ def attendance_dashboard(request):
             "median": charts.median(per_student.values()),
         },
         "daily": charts.columns(points, highlight_last=True, average=average),
+        "stay": _stay_block(stays), "in_now": in_centre_now(today).count(),
+        "occupancy": charts.columns(occupancy_points, unit="student") if any(point["value"] for point in occupancy_points) else None,
         "weekday": charts.columns(weekday_points, unit="visit"),
         "hours": charts.columns(hour_points, unit="check-in"),
         "checkins": checkin_rows(day_checkins(today)),

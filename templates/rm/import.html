@@ -34,7 +34,7 @@
                         <tr>
                             <th scope="col">Row</th>
                             <th scope="col">Result</th>
-                            {% if kind == "students" %}<th scope="col">Name</th><th scope="col">Phone</th><th scope="col">Goal</th><th scope="col">Enrolled</th>{% else %}<th scope="col">Student</th><th scope="col">Date</th><th scope="col">Time</th>{% endif %}
+                            {% if kind == "students" %}<th scope="col">Name</th><th scope="col">Phone</th><th scope="col">Goal</th><th scope="col">Enrolled</th>{% else %}<th scope="col">Student</th><th scope="col">Date</th><th scope="col">Checked in</th><th scope="col">Checked out</th>{% endif %}
                             <th scope="col">Notes</th>
                         </tr>
                     </thead>
@@ -46,7 +46,7 @@
                                 {% if kind == "students" %}
                                     <td>{{ row.values.full_name|default:"—" }}</td><td class="rm-num" style="text-align: left">{{ row.values.phone|default:"—" }}</td><td>{{ row.values.career_goal|default:"—" }}</td><td>{{ row.values.registration_date|default:"—" }}</td>
                                 {% else %}
-                                    <td>{{ row.values.name|default:"—" }}</td><td>{{ row.values.date|default:"—" }}</td><td>{{ row.values.time|default:"—" }}</td>
+                                    <td>{{ row.values.name|default:"—" }}</td><td>{{ row.values.date|default:"—" }}</td><td>{{ row.values.time|default:"—" }}</td><td>{{ row.values.time_out|default:"—" }}</td>
                                 {% endif %}
                                 <td>{% for error in row.errors %}<span style="color: var(--rm-danger)">{{ error|capfirst }}. </span>{% endfor %}{% for note in row.notes %}{{ note|capfirst }}. {% endfor %}</td>
                             </tr>
@@ -91,7 +91,7 @@
                     <p class="rm-card__meta">Area: {{ areas|join:", " }}.</p>
                     <p class="rm-card__meta">Support needed: separate items with semicolons, for example “Study Space; Mock Tests”.</p>
                 {% else %}
-                    <p class="rm-card__meta" style="margin-top: 0">Give <span class="rm-code">registration_number</span> or <span class="rm-code">phone</span>, and the <span class="rm-code">date</span>. <span class="rm-code">time</span> is optional. Visits dated before a student's enrollment date are flagged: a student's first visit is the day they enrolled.</p>
+                    <p class="rm-card__meta" style="margin-top: 0">Give <span class="rm-code">registration_number</span> or <span class="rm-code">phone</span>, and the <span class="rm-code">date</span>. <span class="rm-code">time</span> (check-in) and <span class="rm-code">time_out</span> (check-out) are optional; time in the centre is worked out when both are there. Visits dated before a student's enrollment date are flagged: a student's first visit is the day they enrolled.</p>
                     <p style="line-height: 2">{% for column in visit_columns %}<span class="rm-code">{{ column }}</span> {% endfor %}</p>
                 {% endif %}
             </section>

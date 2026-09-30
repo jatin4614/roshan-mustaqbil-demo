@@ -5,6 +5,7 @@ import importlib
 import os
 from datetime import time, timedelta
 
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -14,9 +15,10 @@ from django.utils import timezone
 from attendance.models import Attendance
 from base import rm_charts
 from base.rm import (
-    ENROLLMENT_VISIT, REGULAR_VISIT, engagement_q, engagement_status, is_centre_admin, is_new_no_return, is_no_return,
-    mark_student_present, needs_call, needs_call_q, no_return_q, normalize_phone, normalize_qualification, record_followup,
-    student_queryset, valid_mobile, with_last_visit,
+    ENROLLMENT_VISIT, REGULAR_VISIT, check_out, clear_check_out, engagement_q, engagement_status, in_centre_now,
+    is_centre_admin, is_new_no_return, is_no_return, mark_student_present, needs_call, needs_call_q, no_return_q,
+    normalize_phone, normalize_qualification, record_followup, stay_minutes, student_queryset, valid_mobile,
+    with_last_visit,
 )
 from base.rm_common import PAGE_SIZE
 from base.rm_students import StudentRegistrationForm, queue_counts, queue_students
@@ -25,6 +27,20 @@ from horilla.testkit.factories import make_company, make_employee, make_user
 from horilla_auth.models import HorillaUser
 
 cleanup = importlib.import_module("employee.migrations.0010_rm_data_cleanup")
+
+
+def at_three_pm(test):
+    """Pin "now" to 3 pm today (the check-in/out tests back-date times)."""
+    from unittest import mock
+
+    real = timezone.localtime
+
+    def fake(value=None, *args, **kwargs):
+        if value is not None:
+            return real(value, *args, **kwargs)
+        return real().replace(hour=15, minute=0, second=0, microsecond=0)
+
+    return mock.patch("django.utils.timezone.localtime", fake)(test)
 enrollment_visits = importlib.import_module("employee.migrations.0011_rm_enrollment_visits")
 enrollment_labels = importlib.import_module("employee.migrations.0012_rm_enrollment_visit_labels")
 
@@ -160,6 +176,7 @@ class CentreScreensTests(TestCase):
 
     def setUp(self):
         self.client.force_login(self.admin)
+        cache.clear()  # the desk remembers recent check-backs-in there
 
     def _profile(self, index):
         return StudentProfile.objects.get(employee=self.students[index])
@@ -239,11 +256,13 @@ class CentreScreensTests(TestCase):
 
     def test_enrolling_marks_the_student_present(self):
         # Students enroll in person, wherever the form is opened from.
-        self._enroll()
+        response = self._enroll()
         student = Employee.objects.get(employee_first_name="Iqra")
         visit = Attendance.objects.get(employee_id=student)
         self.assertEqual((visit.attendance_date, visit.request_description), (self.today, ENROLLMENT_VISIT))
         self.assertIsNotNone(visit.attendance_clock_in)
+        self.assertIsNone(visit.attendance_clock_out)
+        self.assertIn("and checked in at", str(list(response.wsgi_request._messages)[0]))
 
     def test_an_older_paper_registration_records_that_day(self):
         earlier = self.today - timedelta(days=200)
@@ -333,8 +352,9 @@ class CentreScreensTests(TestCase):
         url, headers = reverse("youth-daily-attendance"), {"HTTP_HX_REQUEST": "true"}
         student = self.students[10]
         response = self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers)
-        self.assertContains(response, "is marked present")
-        self.assertContains(self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers), "had already checked in")
+        self.assertContains(response, "is checked in at")
+        # A second Enter straight away is a double press, not leaving.
+        self.assertContains(self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers), "just now. Nothing changed.")
         self.assertEqual(Attendance.objects.filter(employee_id=student, attendance_date=self.today).count(), 1)
         # A partial match is listed, never marked.
         self.client.get(url, {"q": "Student11", "mark_exact": "1"}, **headers)
@@ -360,6 +380,133 @@ class CentreScreensTests(TestCase):
         too_old = (self.today - timedelta(days=45)).isoformat()
         self.client.post(reverse("youth-daily-attendance"), {"student_id": self.students[15].id, "on": too_old})
         self.assertTrue(Attendance.objects.filter(employee_id=self.students[15], attendance_date=self.today).exists())
+
+    # ── Check-in and check-out ─────────────────────────────────────────
+
+    def _checked_in(self, student, minutes_ago):
+        """Check a student in, back-dating the check-in time today (the
+        clock is pinned to 3 pm by at_three_pm, so this never crosses midnight)."""
+        from datetime import datetime
+
+        record, _ = mark_student_present(student)
+        arrived = (datetime.combine(self.today, timezone.localtime().time()) - timedelta(minutes=minutes_ago)).time().replace(second=0, microsecond=0)
+        Attendance.objects.filter(pk=record.pk).update(attendance_clock_in=arrived)
+        record.refresh_from_db()
+        return record
+
+    @at_three_pm
+    def test_enter_checks_in_then_out_then_back_in(self):
+        url, headers = reverse("youth-daily-attendance"), {"HTTP_HX_REQUEST": "true"}
+        student = self.students[33]
+        record = self._checked_in(student, minutes_ago=150)
+        response = self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers)
+        self.assertContains(response, "is checked out at")
+        self.assertContains(response, "after 2 h 30 min")
+        record.refresh_from_db()
+        self.assertIsNotNone(record.attendance_clock_out)
+        self.assertEqual(stay_minutes(record), 150)
+        # A double press straight after checking out doesn't check them back in.
+        self.assertContains(self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers), "just now. Nothing changed.")
+        record.refresh_from_db()
+        self.assertIsNotNone(record.attendance_clock_out)
+        # Back an hour later: Enter checks them in again, still one visit for the day.
+        Attendance.objects.filter(pk=record.pk).update(attendance_clock_out=time(14, 0))
+        response = self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers)
+        self.assertContains(response, "is back in the centre")
+        self.assertContains(response, 'name="previous_out" value="14:00"')
+        record.refresh_from_db()
+        self.assertIsNone(record.attendance_clock_out)
+        self.assertEqual(Attendance.objects.filter(employee_id=student, attendance_date=self.today).count(), 1)
+        # A double press straight after coming back doesn't check them out again.
+        self.assertContains(self.client.get(url, {"q": student.badge_id, "mark_exact": "1"}, **headers), "came back into the centre just now")
+        record.refresh_from_db()
+        self.assertIsNone(record.attendance_clock_out)
+
+    @at_three_pm
+    def test_undo_a_check_out_and_a_check_back_in(self):
+        student = self.students[34]
+        record = self._checked_in(student, minutes_ago=90)
+        check_out(record)
+        self.client.post(reverse("rm-undo-checkin"), {"record_id": record.id, "undo": "out"}, HTTP_HX_REQUEST="true")
+        record.refresh_from_db()
+        self.assertIsNone(record.attendance_clock_out)
+        # Undo "back in": they're out again, at the time they had left.
+        self.client.post(reverse("rm-undo-checkin"), {"record_id": record.id, "undo": "back", "previous_out": "14:30"}, HTTP_HX_REQUEST="true")
+        record.refresh_from_db()
+        self.assertEqual(record.attendance_clock_out, time(14, 30))
+
+    @at_three_pm
+    def test_desk_buttons_check_out_and_everyone_out(self):
+        first, second = self._checked_in(self.students[35], 60), self._checked_in(self.students[36], 45)
+        self.client.post(reverse("youth-daily-attendance"), {"student_id": self.students[35].id, "action": "out"}, HTTP_HX_REQUEST="true")
+        first.refresh_from_db()
+        self.assertIsNotNone(first.attendance_clock_out)
+        self.assertEqual(list(in_centre_now()), [second])
+        response = self.client.post(reverse("rm-check-out-everyone"), HTTP_HX_REQUEST="true")
+        self.assertContains(response, "Checked out 1 student at")
+        self.assertFalse(in_centre_now().exists())
+
+    def test_correcting_a_visits_times(self):
+        day = self.today - timedelta(days=2)
+        record, _ = mark_student_present(self.students[37], day=day)
+        url = reverse("rm-visit", args=[record.id])
+        bad = self.client.post(url, {"action": "times", "checked_in": "15:00", "checked_out": "10:00"})
+        self.assertContains(bad, "Check-out can&#x27;t be before check-in.")
+        self.assertContains(self.client.post(url, {"action": "times", "checked_in": "06:00", "checked_out": "19:30"}), "more than 12 hours")
+        self.client.post(url, {"action": "times", "checked_in": "10:15", "checked_out": "14:45"})
+        record.refresh_from_db()
+        self.assertEqual((record.attendance_clock_in, record.attendance_clock_out, stay_minutes(record)), (time(10, 15), time(14, 45), 270))
+        self.assertEqual(record.attendance_worked_hour, "04:30")
+
+    @at_three_pm
+    def test_a_quick_check_out_is_never_before_the_check_in(self):
+        student, url = self.students[38], reverse("youth-daily-attendance")
+        self.client.post(url, {"student_id": student.id, "action": "in"}, HTTP_HX_REQUEST="true")
+        self.client.post(url, {"student_id": student.id, "action": "out"}, HTTP_HX_REQUEST="true")
+        record = Attendance.objects.get(employee_id=student, attendance_date=self.today)
+        self.assertEqual(record.attendance_clock_out, record.attendance_clock_in)
+        self.assertIsNone(stay_minutes(record))  # no time in the centre to count
+        # The visit page accepts those times as they are.
+        saved = self.client.post(reverse("rm-visit", args=[record.id]), {"action": "times", "checked_in": "15:00", "checked_out": "15:00"})
+        self.assertEqual(saved.status_code, 302)
+
+    @at_three_pm
+    def test_undoing_a_check_in_brings_back_what_the_last_call_recorded(self):
+        student, headers = self.students[39], {"HTTP_HX_REQUEST": "true"}
+        record_followup(student.rm_profile, result="Joined Armed Forces / Selected", called_on=self.today - timedelta(days=10))
+        self.client.get(reverse("youth-daily-attendance"), {"q": student.badge_id, "mark_exact": "1"}, **headers)
+        self.assertEqual(StudentProfile.objects.get(employee=student).outcome, "")  # they came back
+        record = Attendance.objects.get(employee_id=student, attendance_date=self.today)
+        self.client.post(reverse("rm-undo-checkin"), {"record_id": record.id, "undo": "in"}, **headers)
+        profile = StudentProfile.objects.get(employee=student)
+        self.assertEqual((profile.outcome, profile.current_status), ("Selected", "Joined Armed Forces / Selected"))
+
+    @at_three_pm
+    def test_a_visit_without_a_time_today_gets_one_at_the_desk(self):
+        student, url = self.students[44], reverse("youth-daily-attendance")
+        record, _ = mark_student_present(student)
+        Attendance.objects.filter(pk=record.pk).update(attendance_clock_in=None)  # imported for today, say
+        self.assertEqual(self.client.get(url).context["untimed_count"], 1)
+        response = self.client.post(url, {"student_id": student.id, "action": "in"}, HTTP_HX_REQUEST="true")
+        self.assertContains(response, "without a time")
+        record.refresh_from_db()
+        self.assertEqual(record.attendance_clock_in, time(15, 0))
+
+    def test_time_in_the_centre_on_the_dashboards(self):
+        for index, (arrived, left) in enumerate(((time(9, 0), time(12, 0)), (time(10, 0), time(11, 0)), (time(14, 0), None))):
+            day = self.today - timedelta(days=3)
+            record, _ = mark_student_present(self.students[40 + index], day=day)
+            Attendance.objects.filter(pk=record.pk).update(attendance_clock_in=arrived)
+            record.refresh_from_db()
+            if left:
+                check_out(record, left)
+        stay = self.client.get(reverse("dashboard")).context["stay"]
+        # 4 visits with a check-in: these three plus the fixture's visit two
+        # days ago, which has no check-out.
+        self.assertEqual((stay["typical"], stay["count"], stay["timed"]), ("2 h 0 min", 2, 4))
+        page = self.client.get(reverse("rm-attendance-dashboard"))
+        self.assertContains(page, "Typical stay")
+        self.assertContains(page, "How many are in the centre, hour by hour")
 
     def test_removing_an_older_visit(self):
         old = Attendance.objects.get(employee_id=self.students[2])
@@ -467,17 +614,26 @@ class CentreScreensTests(TestCase):
         day = (self.today - timedelta(days=60)).isoformat()
         before = (self.today - timedelta(days=100)).isoformat()  # before they enrolled
         text = (
-            f"registration_number,phone,date,time\n{self.students[30].badge_id},,{day},10:15\n,{self.students[31].phone},{day},\n"
-            f"RM-9999,,{day},\n{self.students[32].badge_id},,{before},\n"
+            f"registration_number,phone,date,time,time_out\n{self.students[30].badge_id},,{day},10:15,13:45\n,{self.students[31].phone},{day},,\n"
+            f"RM-9999,,{day},,\n{self.students[32].badge_id},,{before},,\n{self.students[33].badge_id},,{day},12:00,11:00\n"
+            f"{self.students[34].badge_id},,{day},06:00,20:00\n"
         )
+        # Student 31 had moved away, according to a call before the imported visit.
+        record_followup(self.students[31].rm_profile, result="Moved / Relocated", called_on=self.today - timedelta(days=70))
         preview = self._upload("visits", text).context["preview"]
-        self.assertEqual((preview["new"], preview["errors"]), (2, 2))
+        self.assertEqual((preview["new"], preview["errors"]), (2, 4))
         self.client.post(reverse("rm-import"), {"kind": "visits", "step": "confirm"})
         imported = Attendance.objects.filter(employee_id__in=self.students[30:32], attendance_date=day)
         self.assertEqual(imported.count(), 2)
+        self.assertEqual(stay_minutes(imported.get(employee_id=self.students[30])), 210)
         self.assertFalse(imported.filter(attendance_day__isnull=True).exists())
+        self.assertEqual(StudentProfile.objects.get(employee=self.students[31]).outcome, "")  # they came back after that call
 
     # ── Demo seed ──────────────────────────────────────────────────────
+
+    def test_top_up_never_creates_students(self):
+        call_command("seed_youth_centre_demo", top_up=True, stdout=open(os.devnull, "w"))
+        self.assertFalse(Employee.objects.filter(email__endswith="@rm.demo").exists())
 
     def test_reset_also_removes_students_added_during_a_demo(self):
         out = open(os.devnull, "w")
@@ -488,6 +644,22 @@ class CentreScreensTests(TestCase):
         for student in demo:
             self.assertTrue(Attendance.objects.filter(employee_id=student, request_description=ENROLLMENT_VISIT).exists())
             self.assertNotEqual(student.rm_profile.registration_date.weekday(), 6)
+        # Demo visits from earlier days mostly have a check-out, always after the check-in.
+        earlier = Attendance.objects.filter(employee_id__in=demo, attendance_date__lt=self.today, attendance_clock_in__isnull=False)
+        self.assertGreater(earlier.filter(attendance_clock_out__isnull=False).count(), earlier.count() * 0.8)
+        for visit in earlier.filter(attendance_clock_out__isnull=False):
+            self.assertGreater(visit.attendance_clock_out, visit.attendance_clock_in)
+        # Top-ups never undo the administrator's changes: a removed visit isn't
+        # put back, and a cleared check-out isn't filled in again.
+        removed = Attendance.objects.filter(employee_id__in=demo, request_description=REGULAR_VISIT).order_by("-attendance_date").first()
+        removed_key = (removed.employee_id_id, removed.attendance_date)
+        removed.delete()
+        cleared = earlier.filter(attendance_clock_out__isnull=False).first()
+        clear_check_out(cleared)
+        call_command("seed_youth_centre_demo", top_up=True, stdout=out)
+        self.assertFalse(Attendance.objects.filter(employee_id=removed_key[0], attendance_date=removed_key[1]).exists())
+        cleared.refresh_from_db()
+        self.assertIsNone(cleared.attendance_clock_out)
         self._enroll()  # a walk-in during the demo
         call_command("seed_youth_centre_demo", count=12, reset=True, stdout=out)
         self.assertFalse(Employee.objects.filter(employee_first_name="Iqra", is_active=True).exists())

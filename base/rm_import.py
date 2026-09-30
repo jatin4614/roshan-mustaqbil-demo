@@ -17,7 +17,10 @@ from django.utils import timezone
 
 from attendance.models import Attendance
 from base.models import EmployeeShiftDay
-from base.rm import EARLIEST_ENROLLMENT, ENROLLMENT_VISIT, normalize_phone, normalize_qualification, student_queryset, valid_mobile
+from base.rm import (
+    EARLIEST_ENROLLMENT, ENROLLMENT_VISIT, MAX_STAY_HOURS, clear_stale_followup, minutes_between, normalize_phone,
+    normalize_qualification, student_queryset, valid_mobile,
+)
 from base.rm_access import rm_required
 from base.rm_common import csv_response
 from employee.models import Employee, StudentProfile
@@ -30,7 +33,7 @@ STUDENT_COLUMNS = (
     "reason_for_joining", "support_needed", "expectations", "guardian_name", "guardian_phone",
     "enrollment_date", "notes",
 )
-VISIT_COLUMNS = ("registration_number", "phone", "date", "time")
+VISIT_COLUMNS = ("registration_number", "phone", "date", "time", "time_out")
 ALIASES = {
     "name": "full_name", "student_name": "full_name", "student": "full_name", "mobile": "phone", "phone_number": "phone",
     "contact": "phone", "dob": "date_of_birth", "birth_date": "date_of_birth", "tehsil": "area", "locality": "area",
@@ -40,6 +43,7 @@ ALIASES = {
     "purpose_of_rm": "reason_for_joining", "requirements": "support_needed", "needs": "support_needed",
     "registration_date": "enrollment_date", "enrolled_on": "enrollment_date", "reg_no": "registration_number",
     "registration_no": "registration_number", "reg_number": "registration_number", "visit_date": "date", "check_in": "time",
+    "time_in": "time", "in_time": "time", "check_out": "time_out", "out_time": "time_out", "left_at": "time_out",
 }
 DATE_FORMATS = ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y", "%d-%b-%Y", "%d %b %Y", "%d/%m/%y")
 GOAL_ALIASES = {
@@ -228,13 +232,25 @@ def _check_visits(rows):
         except ValueError as error:
             errors.append(str(error))
             arrived = None
+        try:
+            left = _parse_time(row.get("time_out"))
+        except ValueError as error:
+            errors.append(str(error).replace("time", "time_out", 1))
+            left = None
+        if left and not arrived:
+            errors.append("time_out needs a check-in time too")
+        elif left and arrived and left <= arrived:
+            errors.append("time_out is before the check-in time")
+        elif left and arrived and minutes_between(day or today, arrived, left) > MAX_STAY_HOURS * 60:
+            errors.append(f"more than {MAX_STAY_HOURS} hours between time and time_out")
         state = "error" if errors else "exists" if (student_id, day) in existing or (student_id, day) in seen else "new"
         if state == "exists":
             notes.append("visit already recorded")
         seen.add((student_id, day))
         checked.append({
             "line": number, "state": state, "errors": errors, "notes": notes,
-            "values": {"student_id": student_id, "name": names.get(student_id, ""), "date": day.isoformat() if day else "", "time": arrived.strftime("%H:%M") if arrived else ""},
+            "values": {"student_id": student_id, "name": names.get(student_id, ""), "date": day.isoformat() if day else "", "time": arrived.strftime("%H:%M") if arrived else "",
+                       "time_out": left.strftime("%H:%M") if left else ""},
         })
     return checked
 
@@ -310,13 +326,24 @@ def _import_visits(checked, user):
         values = row["values"]
         day = date.fromisoformat(values["date"])
         arrived = time.fromisoformat(values["time"]) if values["time"] else None
+        left = time.fromisoformat(values["time_out"]) if values.get("time_out") else None
+        minutes = minutes_between(day, arrived, left) or 0
         visits.append(Attendance(
             employee_id_id=values["student_id"], attendance_date=day, attendance_clock_in_date=day, attendance_clock_in=arrived,
-            attendance_worked_hour="00:00", minimum_hour="00:00", request_description="Roshan Mustaqbil visit (imported)",
+            minimum_hour="00:00", request_description="Roshan Mustaqbil visit (imported)",
             created_by=user, attendance_day=weekdays.get(day.weekday()),
+            attendance_clock_out=left, attendance_clock_out_date=day if left else None,
+            attendance_worked_hour=f"{minutes // 60:02d}:{minutes % 60:02d}",
         ))
     before = Attendance.objects.count()
     Attendance.objects.bulk_create(visits, batch_size=500, ignore_conflicts=True)
+    # A visit after a call means that call's status (slipping away, moved
+    # on...) no longer applies, as when the desk checks a student in.
+    latest = {}
+    for visit in visits:
+        latest[visit.employee_id_id] = max(latest.get(visit.employee_id_id, visit.attendance_date), visit.attendance_date)
+    for student in student_queryset().select_related(None).filter(id__in=latest):
+        clear_stale_followup(student, latest[student.id])
     return Attendance.objects.count() - before
 
 
@@ -330,7 +357,7 @@ def import_data(request):
         if kind == "students":
             writer.writerow(["", "Asma Lone", "9419012345", "Female", "2006-04-15", "", "Handwara", "Qalamabad", "Class 12", "Govt. Degree College Handwara", "NEET UG", "", "Competitive exam preparation", "Study Space; Mock Tests", "Quiet place to study", "Nazir Lone", "9596012345", "2024-06-01", ""])
         else:
-            writer.writerow(["RM-0001", "", "2024-06-03", "10:15"])
+            writer.writerow(["RM-0001", "", "2024-06-03", "10:15", "14:40"])
         return response
     step = request.POST.get("step")
     if request.method == "POST" and step == "check":

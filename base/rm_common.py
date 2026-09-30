@@ -105,6 +105,70 @@ def typical_by_now(today, now=None, weeks=4):
     return round(by_now / len(open_days))
 
 
+def stay_summary(start, end):
+    """Time in the centre over a date range (today excluded: people are
+    still in). Returns the typical stay, the bucket counts and how many
+    visits had a check-out."""
+    from base.rm import STAY_BUCKETS, minutes_between, stay_bucket
+
+    rows = rm_visits().filter(attendance_date__range=(start, end), attendance_clock_in__isnull=False).values_list(
+        "attendance_date", "attendance_clock_in", "attendance_clock_out", "employee_id__rm_profile__career_goal",
+    )
+    stays, by_goal, timed = [], {}, 0
+    for day, arrived, left, goal in rows:
+        timed += 1
+        minutes = minutes_between(day, arrived, left)
+        if minutes is not None:
+            stays.append(minutes)
+            by_goal.setdefault(goal or "", []).append(minutes)
+    buckets = Counter(stay_bucket(minutes) for minutes in stays)
+    return {
+        "median": median(stays), "count": len(stays), "timed": timed,
+        "buckets": {label: buckets.get(label, 0) for _, label in STAY_BUCKETS},
+        "by_goal": {goal: median(values) for goal, values in by_goal.items()},
+    }
+
+
+def median(values):
+    ordered = sorted(values)
+    if not ordered:
+        return None
+    middle = len(ordered) // 2
+    return ordered[middle] if len(ordered) % 2 else round((ordered[middle - 1] + ordered[middle]) / 2)
+
+
+def occupancy_by_hour(days, first_hour=9, last_hour=18):
+    """Average number of students in the centre during each hour, over the
+    given open days, from visits with both a check-in and a check-out. A
+    student counts for an hour if they were in at half past."""
+    from datetime import time as clock
+
+    counts = Counter()
+    for arrived, left in rm_visits().filter(attendance_date__in=days, attendance_clock_in__isnull=False, attendance_clock_out__isnull=False).values_list("attendance_clock_in", "attendance_clock_out"):
+        for hour in range(first_hour, last_hour):
+            if arrived <= clock(hour, 30) < left:
+                counts[hour] += 1
+    return {hour: round(counts[hour] / len(days), 1) if days else 0 for hour in range(first_hour, last_hour)}
+
+
+def occupancy_today(day, now, first_hour=9):
+    """How many were in the centre at half past each hour today, so far."""
+    from datetime import time as clock
+
+    visits = list(rm_visits().filter(attendance_date=day, attendance_clock_in__isnull=False).values_list("attendance_clock_in", "attendance_clock_out"))
+    points = {}
+    for hour in range(first_hour, 18):
+        moment = clock(hour, 30)
+        if moment > now:
+            break
+        points[hour] = sum(1 for arrived, left in visits if arrived <= moment and (left is None or left > moment))
+    return points
+
+
+def hour_label(hour):
+    return f"{hour % 12 or 12} {'am' if hour < 12 else 'pm'}"
+
+
 def day_checkins(day, limit=None):
     visits = rm_visits().filter(attendance_date=day).select_related("employee_id", "employee_id__rm_profile").order_by("-attendance_clock_in", "-id")
     return visits[:limit] if limit else visits

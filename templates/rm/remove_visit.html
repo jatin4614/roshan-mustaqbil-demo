@@ -1,31 +1,48 @@
 {% extends "index.html" %}
-{% block title %}{% if is_enrollment %}The enrollment day{% else %}Remove a visit{% endif %} | Roshan Mustaqbil{% endblock %}
+{% block title %}Visit on {{ record.attendance_date|date:"j M" }} | Roshan Mustaqbil{% endblock %}
 {% block content %}
 <div class="rm-page rm-page--narrow">
     <header class="rm-head">
         <div>
             <a class="rm-back" href="{{ back }}">‹ Back</a>
-            <h1 class="rm-head__title">{% if is_enrollment %}This is the day {{ record.employee_id.employee_first_name }} enrolled{% else %}Remove this visit?{% endif %}</h1>
-            <p class="rm-head__sub">{% if is_enrollment %}Students enroll in person, so the enrollment day always counts as a visit and can't be removed on its own.{% else %}Use this when a student was marked present by mistake. It can't be undone, but you can mark them again.{% endif %}</p>
+            <h1 class="rm-head__title">{{ record.employee_id.get_full_name }}, {{ record.attendance_date|date:"l j F" }}</h1>
+            <p class="rm-head__sub">{% if is_enrollment %}The day {{ record.employee_id.employee_first_name }} enrolled. It always counts as a visit, so it can't be removed on its own, but its times can be corrected.{% else %}Correct the times (a forgotten check-out, say), or remove the visit if it was marked by mistake.{% endif %}</p>
         </div>
     </header>
+
     <section class="rm-card">
-        <dl class="rm-facts">
-            <div><dt>Student</dt><dd>{{ record.employee_id.get_full_name }} ({{ record.employee_id.badge_id }})</dd></div>
-            <div><dt>Date</dt><dd>{{ record.attendance_date|date:"l, j F Y" }}</dd></div>
-            <div><dt>Checked in</dt><dd>{{ record.attendance_clock_in|time:"g:i A"|default:"From a register" }}</dd></div>
-        </dl>
+        <div class="rm-card__head"><h2 class="rm-card__title">Times</h2>{% if stay %}<span class="rm-stay">In the centre for {{ stay }}</span>{% endif %}</div>
+        <form method="post" class="rm-form" style="gap: 16px">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="times">
+            <input type="hidden" name="next" value="{{ back }}">
+            <div class="rm-form__fields">
+                {% for field in form %}
+                    <div class="rm-field{% if field.errors %} rm-field--error{% endif %}">
+                        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% for error in field.errors %}<p class="rm-field__error">{{ error }}</p>{% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+            <p class="rm-field__help">Leave "Checked out" empty if they haven't left, or if nobody knows when they did. Visits without both times are left out of time-in-centre figures.</p>
+            <div style="display: flex; justify-content: flex-end"><button class="rm-btn rm-btn--primary" type="submit">Save times</button></div>
+        </form>
+    </section>
+
+    <section class="rm-card">
+        <div class="rm-card__head"><h2 class="rm-card__title">{% if is_enrollment %}The enrollment day{% else %}Remove this visit{% endif %}</h2></div>
         {% if is_enrollment %}
-            <p class="rm-card__meta" style="margin: 18px 0 0">If the enrollment date is wrong, correct it on their details and this visit moves with it. If they were enrolled by mistake (a duplicate, say), remove the student.</p>
-            <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 22px">
+            <p class="rm-card__meta" style="margin: 0">If the enrollment date is wrong, correct it on their details and this visit moves with it. If they were enrolled by mistake (a duplicate, say), remove the student.</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 16px">
                 <a class="rm-btn rm-btn--secondary" href="{% url 'rm-remove-student' record.employee_id_id %}">Remove the student</a>
-                <a class="rm-btn rm-btn--primary" href="{% url 'rm-edit-student' record.employee_id_id %}">Correct the enrollment date</a>
+                <a class="rm-btn rm-btn--secondary" href="{% url 'rm-edit-student' record.employee_id_id %}">Correct the enrollment date</a>
             </div>
         {% else %}
-            <form method="post" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px">
+            <p class="rm-card__meta" style="margin: 0">Use this when a student was marked present by mistake. It can't be undone, but you can mark them again.</p>
+            <form method="post" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ back }}">
-                <a class="rm-btn rm-btn--secondary" href="{{ back }}">Keep it</a>
                 <button class="rm-btn rm-btn--danger" type="submit">Remove visit</button>
             </form>
         {% endif %}

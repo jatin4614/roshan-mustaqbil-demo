@@ -13,9 +13,9 @@ This repository includes `render.yaml` for a Roshan Mustaqbil deployment:
 5. Open the `onrender.com` URL and sign in as `admin`.
 
 The first deployment creates the administrator and the demo data (960
-students with visits and follow-up calls). Later starts only add the day's
-check-ins so far for students who are still coming; they never rewrite
-changes made in the app.
+students with visits, check-in and check-out times, and follow-up calls).
+Later starts only add the day's check-ins and check-outs so far for students
+who are still coming; they never rewrite changes made in the app.
 
 ## Going live with real students
 

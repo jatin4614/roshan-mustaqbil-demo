@@ -20,15 +20,22 @@
             </div>
             <div class="rm-head__actions">
                 <a class="rm-btn rm-btn--secondary" href="{% url 'rm-edit-student' student.id %}">Edit details</a>
-                {% if present_today %}
-                    <span class="rm-btn rm-btn--secondary" aria-disabled="true" style="cursor: default; color: var(--rm-success-ink)">
-                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0z" clip-rule="evenodd"/></svg>
-                        Present today
-                    </span>
+                {% if today_visit and today_visit.attendance_clock_in and not today_visit.attendance_clock_out %}
+                    <span class="rm-stay">In since {{ today_visit.attendance_clock_in|time:"g:i A" }}</span>
+                    <form method="post">{% csrf_token %}
+                        <input type="hidden" name="action" value="check_out">
+                        <button class="rm-btn rm-btn--primary" type="submit">Check out</button>
+                    </form>
+                {% elif today_visit and today_visit.attendance_clock_out %}
+                    <span class="rm-stay">Left at {{ today_visit.attendance_clock_out|time:"g:i A" }}</span>
+                    <form method="post">{% csrf_token %}
+                        <input type="hidden" name="action" value="check_in">
+                        <button class="rm-btn rm-btn--secondary" type="submit">Check in again</button>
+                    </form>
                 {% else %}
                     <form method="post">{% csrf_token %}
-                        <input type="hidden" name="action" value="mark_present">
-                        <button class="rm-btn rm-btn--primary" type="submit">Mark present today</button>
+                        <input type="hidden" name="action" value="check_in">
+                        <button class="rm-btn rm-btn--primary" type="submit">Check in</button>
                     </form>
                 {% endif %}
             </div>
@@ -48,7 +55,7 @@
         </div>
     {% endif %}
 
-    <section class="rm-kpis" style="--rm-kpi-count: 4" aria-label="Visits">
+    <section class="rm-kpis" style="--rm-kpi-count: 5" aria-label="Visits">
         <div class="rm-kpi">
             <span class="rm-kpi__label">Last visit</span>
             <div class="rm-kpi__value">{% if engagement.days_since_visit == 0 %}Today{% elif engagement.days_since_visit == 1 %}Yesterday{% else %}{{ engagement.days_since_visit }}<span style="font-size: 16px; font-weight: 500"> days ago</span>{% endif %}</div>
@@ -63,6 +70,11 @@
             <span class="rm-kpi__label">Last 12 months</span>
             <div class="rm-kpi__value">{{ calendar.count }}</div>
             <div class="rm-kpi__note">Since {{ calendar.since|date:"j M Y" }}</div>
+        </div>
+        <div class="rm-kpi">
+            <span class="rm-kpi__label">Typical stay</span>
+            <div class="rm-kpi__value" style="font-size: 24px">{{ typical_stay|default:"—" }}</div>
+            <div class="rm-kpi__note">{% if stays_counted %}Over {{ stays_counted }} visit{{ stays_counted|pluralize }} with a check-out, last 90 days{% else %}No check-outs recorded in the last 90 days{% endif %}</div>
         </div>
         <div class="rm-kpi">
             <span class="rm-kpi__label">All visits</span>
@@ -118,11 +130,16 @@
                 </div>
             </div>
             <ul class="rm-list">
-                {% for visit in visits %}
+                {% for item in visits %}
+                    {% with visit=item.record %}
                     <li class="rm-list__item">
-                        <span>{{ visit.attendance_date|date:"D, j M Y" }}<span class="rm-person__sub">{% if visit.request_description == enrollment_visit %}Enrolled{% if visit.attendance_clock_in %} at {{ visit.attendance_clock_in|time:"g:i A" }}{% endif %}{% elif visit.attendance_clock_in %}{{ visit.attendance_clock_in|time:"g:i A" }}{% else %}From a register{% endif %}</span></span>
-                        {% if visit.request_description == enrollment_visit %}<span class="rm-tag">Enrolled</span>{% else %}<a class="rm-card__link" href="{% url 'rm-remove-visit' visit.id %}" style="font-weight: 500">Remove</a>{% endif %}
+                        <span>{{ visit.attendance_date|date:"D, j M Y" }}<span class="rm-person__sub">{% if visit.attendance_clock_in %}{{ visit.attendance_clock_in|time:"g:i A" }}{% if visit.attendance_clock_out %} to {{ visit.attendance_clock_out|time:"g:i A" }}, {{ item.stay }}{% elif visit.attendance_date == today_visit.attendance_date %}, in the centre now{% else %}, no check-out recorded{% endif %}{% else %}From a register{% endif %}</span></span>
+                        <span style="display: inline-flex; gap: 10px; align-items: center">
+                            {% if visit.request_description == enrollment_visit %}<span class="rm-tag">Enrolled</span>{% endif %}
+                            <a class="rm-card__link" href="{% url 'rm-visit' visit.id %}" style="font-weight: 500">Edit</a>
+                        </span>
                     </li>
+                    {% endwith %}
                 {% empty %}
                     <li class="rm-empty"><b>No visits recorded.</b>{{ student.employee_first_name }} enrolled on {{ profile.registration_date|date:"j M Y" }}.</li>
                 {% endfor %}

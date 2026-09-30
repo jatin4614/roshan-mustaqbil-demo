@@ -55,7 +55,7 @@
         <a class="rm-kpi rm-kpi--now" href="{% url 'youth-daily-attendance' %}">
             <span class="rm-kpi__label">Present today, so far</span>
             <div class="rm-kpi__value">{{ kpis.today }}</div>
-            <div class="rm-kpi__note">{% if kpis.typical is not None %}By this time on a typical open day: <b>{{ kpis.typical }}</b>{% else %}No visits recorded yet{% endif %}</div>
+            <div class="rm-kpi__note"><b>{{ in_now }}</b> in the centre now{% if kpis.typical is not None %}; by this time on a typical open day: <b>{{ kpis.typical }}</b>{% endif %}</div>
         </a>
         <a class="rm-kpi" href="{% url 'rm-attendance-dashboard' %}">
             <span class="rm-kpi__label">Visits per active student</span>
@@ -120,6 +120,32 @@
                 <a class="rm-card__link" href="{% url 'youth-centre-goals' %}">Goal details</a>
             </div>
             {% include "rm/charts/bars.html" with rows=goals dots=True %}
+        </section>
+    </div>
+
+    <div class="rm-grid rm-grid--2">
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">Time in the centre</h2>
+                    <p class="rm-card__meta">{% if stay.count %}Last 30 days. Typical stay <b>{{ stay.typical }}</b>, over {{ stay.count }} visits with a check-out ({{ stay.coverage }} of visits; the rest had no check-out recorded){% else %}No check-outs recorded yet{% endif %}</p>
+                </div>
+            </div>
+            {% include "rm/charts/bars.html" with rows=stay.bars empty="No check-outs recorded yet." %}
+        </section>
+        <section class="rm-card">
+            <div class="rm-card__head">
+                <div>
+                    <h2 class="rm-card__title">In the centre today, hour by hour</h2>
+                    <p class="rm-card__meta">How many students were in at half past each hour; <b>{{ in_now }}</b> in the centre now</p>
+                </div>
+                <a class="rm-card__link" href="{% url 'rm-attendance-dashboard' %}">A typical day</a>
+            </div>
+            {% if today_hours %}
+                {% include "rm/charts/columns.html" with chart=today_hours cls="rm-cols--short rm-cols--labels" caption="Students in the centre at each hour today" %}
+            {% else %}
+                <div class="rm-empty"><b>The centre hasn't opened yet today.</b>This fills in hour by hour as students check in and out.</div>
+            {% endif %}
         </section>
     </div>
 </div>

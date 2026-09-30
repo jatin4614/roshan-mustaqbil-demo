@@ -1,36 +1,60 @@
 <aside class="rm-card rm-today" id="rm-desk-today"{% if oob %} hx-swap-oob="true"{% endif %} aria-label="Checked in">
     <p class="rm-card__meta" style="margin: 0">{% if is_today %}Present today{% else %}Present on {{ day|date:"j M" }}{% endif %}</p>
     <div class="rm-today__count">{{ today_count }}<small>student{{ today_count|pluralize }}</small></div>
-    <div class="rm-card__head" style="margin: 20px 0 2px">
-        <h2 class="rm-card__title">Latest check-ins</h2>
+    {% if is_today and today_count %}
+        <p class="rm-today__split"><span class="rm-dot k-active"></span><b>{{ in_count }}</b> in the centre now <span class="rm-dot k-inactive" style="margin-left: 10px"></span><b>{{ left_count }}</b> left{% if untimed_count %} · <b>{{ untimed_count }}</b> without a time{% endif %}</p>
+    {% endif %}
+    <div class="rm-card__head" style="margin: 18px 0 2px">
+        <h2 class="rm-card__title">{% if is_today %}Who's here{% else %}Marked present{% endif %}</h2>
         <a class="rm-card__link" href="{% url 'rm-attendance-dashboard' %}">Attendance dashboard</a>
     </div>
     <ul class="rm-list rm-list--scroll">
         {% for checkin in checkins %}
-            <li class="rm-list__item">
+            {% with visit=checkin.record %}
+            <li class="rm-list__item{% if visit.attendance_clock_out %} rm-list__item--left{% endif %}">
                 <a class="rm-person" href="{% url 'rm-student-profile' checkin.student.id %}">
                     <span class="rm-avatar k-{{ checkin.goal_key }}">{{ checkin.initials }}</span>
                     <span class="rm-person__text">
                         <span class="rm-person__name">{{ checkin.student.get_full_name }}</span>
-                        <span class="rm-person__sub">{{ checkin.student.badge_id }}{% if checkin.goal %}, {{ checkin.goal }}{% endif %}</span>
+                        <span class="rm-person__sub">{% if visit.attendance_clock_out %}{{ visit.attendance_clock_in|time:"g:i A" }} to {{ visit.attendance_clock_out|time:"g:i A" }}{% elif visit.attendance_clock_in %}{% if is_today %}In since {{ visit.attendance_clock_in|time:"g:i A" }}{% else %}{{ visit.attendance_clock_in|time:"g:i A" }}, no check-out{% endif %}{% else %}From a register{% endif %}{% if checkin.is_enrollment %} · enrolled{% endif %}</span>
                     </span>
                 </a>
-                <span style="display: inline-flex; align-items: center; gap: 2px">
-                    <span class="rm-list__time">{{ checkin.record.attendance_clock_in|time:"g:i A"|default:"Register" }}</span>
-                    {% if checkin.is_enrollment %}
-                        <span class="rm-tag rm-tag--new" data-tip="Enrolled at the centre today. To undo an enrollment, remove the student from their details page.">Enrolled</span>
-                    {% else %}
+                <span style="display: inline-flex; align-items: center; gap: 4px">
+                    {% if is_today and visit.attendance_clock_in and not visit.attendance_clock_out %}
+                        <form method="post" action="{% url 'youth-daily-attendance' %}" hx-post="{% url 'youth-daily-attendance' %}" hx-swap="none" hx-disabled-elt="find button">
+                            {% csrf_token %}
+                            <input type="hidden" name="student_id" value="{{ checkin.student.id }}">
+                            <input type="hidden" name="action" value="out">
+                            <button class="rm-btn rm-btn--secondary rm-btn--sm" type="submit" aria-label="Check out {{ checkin.student.get_full_name }}">Check out</button>
+                        </form>
+                    {% elif visit.attendance_clock_out %}
+                        <span class="rm-list__time">Left</span>
+                    {% endif %}
+                    {% if not checkin.is_enrollment %}
                         <form method="post" action="{% url 'rm-undo-checkin' %}" hx-post="{% url 'rm-undo-checkin' %}" hx-swap="none" hx-disabled-elt="find button">
                             {% csrf_token %}
-                            <input type="hidden" name="record_id" value="{{ checkin.record.id }}">
+                            <input type="hidden" name="record_id" value="{{ visit.id }}">
                             <input type="hidden" name="on" value="{{ day|date:'Y-m-d' }}">
-                            <button class="rm-icon-btn" type="submit" aria-label="Remove {{ checkin.student.get_full_name }}'s check-in" data-tip="Remove this check-in">×</button>
+                            <button class="rm-icon-btn" type="submit" aria-label="Remove {{ checkin.student.get_full_name }}'s visit" data-tip="Remove this visit (marked by mistake)">×</button>
                         </form>
                     {% endif %}
                 </span>
             </li>
+            {% endwith %}
         {% empty %}
             <li class="rm-empty"><b>No one has checked in yet{% if is_today %} today{% endif %}.</b>Check-ins appear here as students arrive.</li>
         {% endfor %}
     </ul>
+    {% if is_today and in_count %}
+        <details class="rm-closing">
+            <summary class="rm-btn rm-btn--secondary rm-btn--sm">Check everyone out…</summary>
+            <div class="rm-closing__confirm">
+                <p>Check out all {{ in_count }} student{{ in_count|pluralize }} still in the centre, at the current time? Use this at closing time.</p>
+                <form method="post" action="{% url 'rm-check-out-everyone' %}" hx-post="{% url 'rm-check-out-everyone' %}" hx-swap="none" hx-disabled-elt="find button">
+                    {% csrf_token %}
+                    <button class="rm-btn rm-btn--primary rm-btn--sm" type="submit">Check out {{ in_count }} student{{ in_count|pluralize }}</button>
+                </form>
+            </div>
+        </details>
+    {% endif %}
 </aside>

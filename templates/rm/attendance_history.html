@@ -43,7 +43,9 @@
                 <thead>
                     <tr>
                         <th scope="col">Student</th>
-                        <th scope="col">Checked in</th>
+                        <th scope="col">In</th>
+                        <th scope="col">Out</th>
+                        <th scope="col" class="rm-hide-sm">Time in centre</th>
                         <th scope="col">Career goal</th>
                         <th scope="col" class="rm-hide-sm">Type</th>
                         <th scope="col"><span class="rm-sr">Actions</span></th>
@@ -52,7 +54,7 @@
                 <tbody>
                     {% for row in rows %}
                         {% if row.new_day %}
-                            <tr class="rm-table__day"><td colspan="5">{% if row.record.attendance_date == today %}Today, {% endif %}{{ row.record.attendance_date|date:"l j F Y" }}</td></tr>
+                            <tr class="rm-table__day"><td colspan="7">{% if row.record.attendance_date == today %}Today, {% endif %}{{ row.record.attendance_date|date:"l j F Y" }}</td></tr>
                         {% endif %}
                         <tr data-href="{% url 'rm-student-profile' row.student.id %}">
                             <td>
@@ -65,12 +67,14 @@
                                 </a>
                             </td>
                             <td class="rm-num" style="text-align: left">{{ row.record.attendance_clock_in|time:"g:i A"|default:"From a register" }}</td>
+                            <td class="rm-num" style="text-align: left">{% if row.record.attendance_clock_out %}{{ row.record.attendance_clock_out|time:"g:i A" }}{% elif row.record.attendance_clock_in and row.record.attendance_date == today %}<span class="rm-tag rm-tag--new">In the centre</span>{% elif row.record.attendance_clock_in %}<span class="rm-muted">Not recorded</span>{% else %}—{% endif %}</td>
+                            <td class="rm-num rm-hide-sm" style="text-align: left">{{ row.stay|default:"—" }}</td>
                             <td>{% if row.student.rm_profile.career_goal %}<span class="rm-tag"><span class="rm-dot k-{{ row.goal_key }}"></span>{{ row.student.rm_profile.career_goal }}</span>{% else %}<span class="rm-muted">Not recorded</span>{% endif %}</td>
                             <td class="rm-hide-sm">{% if row.is_enrollment %}<span class="rm-tag rm-tag--new">Enrolled</span>{% else %}{{ row.type }}{% endif %}</td>
-                            <td style="text-align: right">{% if not row.is_enrollment %}<a class="rm-card__link" style="font-weight: 500" href="{% url 'rm-remove-visit' row.record.id %}?next={{ here|urlencode }}">Remove</a>{% endif %}</td>
+                            <td style="text-align: right"><a class="rm-card__link" style="font-weight: 500" href="{% url 'rm-visit' row.record.id %}?next={{ here|urlencode }}">Edit</a></td>
                         </tr>
                     {% empty %}
-                        <tr><td colspan="5"><div class="rm-empty"><b>No visits match these filters.</b>Try a longer period or clear the search.</div></td></tr>
+                        <tr><td colspan="7"><div class="rm-empty"><b>No visits match these filters.</b>Try a longer period or clear the search.</div></td></tr>
                     {% endfor %}
                 </tbody>
             </table>

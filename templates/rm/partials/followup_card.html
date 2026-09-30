@@ -37,7 +37,7 @@
                         <form method="post" action="{% url 'rm-delete-followup' call.id %}" style="margin-top: 4px" onsubmit="return confirm('Remove this call from the history?')">{% csrf_token %}<button class="rm-btn rm-btn--ghost rm-btn--sm" type="submit" style="padding: 0; min-height: 24px; color: var(--rm-muted)">Remove this entry</button></form>
                     </li>
                 {% empty %}
-                    <li style="padding-left: 0" class="rm-muted">No calls recorded yet.</li>
+                    <li class="rm-timeline__empty rm-muted">No calls recorded yet.</li>
                 {% endfor %}
             </ul>
         </div>

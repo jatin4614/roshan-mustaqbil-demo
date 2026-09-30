@@ -2,8 +2,9 @@
 
 import re
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce, Greatest
@@ -57,6 +58,13 @@ CALL_BACK_AFTER_DAYS = {"Plans to Return": 14, "Unable to Contact": RETRY_AFTER_
 # Visits needed for a day to count as a day the centre was open.
 OPEN_DAY_MIN_VISITS = 5
 
+# Pressing Enter again within this many minutes of checking a student in, out
+# or back in is a double press: nothing changes.
+DOUBLE_PRESS_MINUTES = 5
+# A longer time in the centre is a typing mistake.
+MAX_STAY_HOURS = 12
+# Time in the centre, for the "how long they stay" charts.
+STAY_BUCKETS = ((60, "Under 1 hour"), (120, "1–2 hours"), (240, "2–4 hours"), (360, "4–6 hours"), (10 ** 6, "6 hours or more"))
 # Enrollment dates before this are almost certainly typing mistakes.
 EARLIEST_ENROLLMENT = date(2015, 1, 1)
 
@@ -274,7 +282,7 @@ def mark_student_present(student, day=None, actor=None, note=REGULAR_VISIT):
     """
     now = timezone.localtime().replace(tzinfo=None)
     day = day or now.date()
-    arrived = now.time().replace(microsecond=0) if day == now.date() else None
+    arrived = now.time().replace(second=0, microsecond=0) if day == now.date() else None
     defaults = {
         "attendance_clock_in_date": day,
         "attendance_clock_in": arrived,
@@ -291,15 +299,167 @@ def mark_student_present(student, day=None, actor=None, note=REGULAR_VISIT):
         record = Attendance.objects.get(employee_id=student, attendance_date=day)
         created = False
     if created:
-        from employee.models import StudentProfile
-
-        profile = StudentProfile.objects.get(employee_id=student.pk)  # never a stale cached copy
-        called = profile.last_followup_date
-        if (profile.current_status or profile.outcome or profile.next_call_date) and (not called or called <= day):
-            profile.current_status = profile.inactivity_reason = profile.outcome = ""
-            profile.next_call_date = profile.outcome_date = None
-            profile.save(update_fields=["current_status", "inactivity_reason", "outcome", "next_call_date", "outcome_date"])
+        clear_stale_followup(student, day)
     return record, created
+
+
+def clear_stale_followup(student, day):
+    """A visit on ``day`` means a status from a call on or before that day
+    (slipping away, moved on, call back on...) no longer applies. The call
+    history is kept."""
+    from employee.models import StudentProfile
+
+    profile = StudentProfile.objects.filter(employee_id=student.pk).first()  # never a stale cached copy
+    if profile is None:
+        return
+    called = profile.last_followup_date
+    if (profile.current_status or profile.outcome or profile.next_call_date) and (not called or called <= day):
+        profile.current_status = profile.inactivity_reason = profile.outcome = ""
+        profile.next_call_date = profile.outcome_date = None
+        profile.save(update_fields=["current_status", "inactivity_reason", "outcome", "next_call_date", "outcome_date"])
+
+
+def restore_followup_status(student):
+    """After a visit is removed (marked by mistake, or undone), bring back
+    what the latest call recorded, if no visit is left on or after that
+    call: the visit that cleared it never happened."""
+    from employee.models import StudentProfile
+
+    profile = StudentProfile.objects.filter(employee_id=student.pk).first()
+    if profile is None or profile.current_status or profile.outcome:
+        return
+    latest = profile.followups.order_by("-called_on", "-created_at").first()
+    if latest is None or Attendance.objects.filter(employee_id=student.pk, attendance_date__gte=latest.called_on).exists():
+        return
+    outcome = StudentProfile.STATUS_OUTCOMES.get(latest.result, "")
+    profile.current_status = latest.result
+    profile.inactivity_reason = latest.reason
+    profile.next_call_date = latest.next_call_date
+    profile.outcome, profile.outcome_date = (outcome, latest.called_on) if outcome else ("", None)
+    profile.save(update_fields=["current_status", "inactivity_reason", "next_call_date", "outcome", "outcome_date"])
+
+
+def remove_visit_record(record):
+    """Delete a visit marked by mistake, and put back the call status it had
+    cleared."""
+    student = record.employee_id
+    record.delete()
+    restore_followup_status(student)
+
+
+def minutes_between(day, arrived, left):
+    """Minutes from check-in to check-out, or None when either is missing (a
+    paper register, or a check-out that wasn't recorded)."""
+    if not arrived or not left or left <= arrived:
+        return None  # a check-out in the same minute as the check-in has no stay either
+    return int((datetime.combine(day, left) - datetime.combine(day, arrived)).total_seconds() // 60)
+
+
+def stay_minutes(record):
+    return minutes_between(record.attendance_date, record.attendance_clock_in, record.attendance_clock_out)
+
+
+def stay_label(minutes):
+    if minutes is None:
+        return ""
+    hours, rest = divmod(minutes, 60)
+    return f"{hours} h {rest} min" if hours else f"{rest} min"
+
+
+def stay_bucket(minutes):
+    return next(label for upper, label in STAY_BUCKETS if minutes < upper)
+
+
+def check_out(record, at=None):
+    """Record when the student left. Written straight to the row: the HR
+    side's save() would recompute work records and overtime, which don't
+    apply to students."""
+    at = (at or timezone.localtime().replace(tzinfo=None).time()).replace(second=0, microsecond=0)
+    if record.attendance_clock_in and at < record.attendance_clock_in:
+        at = record.attendance_clock_in  # checked out within a minute of checking in
+    minutes = minutes_between(record.attendance_date, record.attendance_clock_in, at)
+    worked = f"{minutes // 60:02d}:{minutes % 60:02d}" if minutes is not None else ""
+    Attendance.objects.filter(pk=record.pk).update(
+        attendance_clock_out=at, attendance_clock_out_date=record.attendance_date, attendance_worked_hour=worked or "00:00",
+    )
+    record.attendance_clock_out, record.attendance_clock_out_date = at, record.attendance_date
+    record.attendance_worked_hour = worked or "00:00"
+    cache.delete(_back_in_key(record))
+    return record
+
+
+def clear_check_out(record):
+    """They're back in the centre (or a check-out is undone)."""
+    Attendance.objects.filter(pk=record.pk).update(attendance_clock_out=None, attendance_clock_out_date=None, attendance_worked_hour="00:00")
+    record.attendance_clock_out = record.attendance_clock_out_date = None
+    record.attendance_worked_hour = "00:00"
+    return record
+
+
+def give_check_in_time(record, now=None):
+    """Today's visit came without a time (imported, say) and the student is
+    at the desk now: check them in now. Undo isn't offered; the visit page
+    corrects the time."""
+    now = now or timezone.localtime().replace(tzinfo=None)
+    arrived = now.time().replace(second=0, microsecond=0)
+    Attendance.objects.filter(pk=record.pk).update(attendance_clock_in=arrived, attendance_clock_in_date=record.attendance_date)
+    record.attendance_clock_in = arrived
+    return record
+
+
+def _back_in_key(record):
+    return f"rm-desk-back-in:{record.pk}"
+
+
+def check_back_in(record):
+    """They've come back after leaving: still the same visit, so the time in
+    the centre runs from the first check-in to the last check-out. Keeps the
+    check-out being replaced (for Undo) and, for a few minutes, that they
+    just came back (the row has no field for it), so a double press doesn't
+    check them straight out again. The default cache is per process: fine
+    for runserver and the one-worker hosted setup."""
+    previous = record.attendance_clock_out
+    clear_check_out(record)
+    record.previous_out = previous
+    cache.set(_back_in_key(record), True, DOUBLE_PRESS_MINUTES * 60)
+    return record
+
+
+def desk_toggle(student, day=None, actor=None):
+    """What pressing Enter (or the desk button) does for one student today:
+    check in, check out, or check back in after leaving.
+
+    Returns (record, action) with action one of "in", "out", "back",
+    "timed" (today's visit had no time yet), "just_in", "just_out" and
+    "just_back" (a double press within DOUBLE_PRESS_MINUTES: nothing
+    changed) and "recorded" (an earlier day, which has no times to toggle).
+    """
+    now = timezone.localtime().replace(tzinfo=None)
+    day = day or now.date()
+    record = Attendance.objects.filter(employee_id=student, attendance_date=day).first()
+    if record is None:
+        record, _ = mark_student_present(student, day=day, actor=actor)
+        return record, "in"
+    if day != now.date():
+        return record, "recorded"
+    if record.attendance_clock_out:
+        if now - datetime.combine(day, record.attendance_clock_out) < timedelta(minutes=DOUBLE_PRESS_MINUTES):
+            return record, "just_out"
+        return check_back_in(record), "back"
+    if not record.attendance_clock_in:
+        return give_check_in_time(record, now), "timed"
+    arrived = datetime.combine(day, record.attendance_clock_in)
+    if now - arrived < timedelta(minutes=DOUBLE_PRESS_MINUTES):
+        return record, "just_in"
+    if cache.get(_back_in_key(record)):
+        return record, "just_back"
+    return check_out(record, now.time()), "out"
+
+
+def in_centre_now(day=None):
+    """Today's visits that have checked in and not yet out."""
+    day = day or timezone.localdate()
+    return rm_visits().filter(attendance_date=day, attendance_clock_in__isnull=False, attendance_clock_out__isnull=True)
 
 
 def record_enrollment_visit(student, day, actor=None):

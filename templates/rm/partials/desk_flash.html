@@ -1,9 +1,9 @@
-<div id="rm-desk-flash"{% if oob %} hx-swap-oob="true"{% endif %} data-clear="{% if flash and not flash.undone %}1{% endif %}" aria-live="polite" style="margin-top: 16px{% if not flash %}; display: none{% endif %}">
+<div id="rm-desk-flash"{% if oob %} hx-swap-oob="true"{% endif %} data-clear="{% if flash and flash.changed and not flash.undone %}1{% endif %}" aria-live="polite" style="margin-top: 16px{% if not flash %}; display: none{% endif %}">
     {% if flash.undone %}
         <div class="rm-flash rm-flash--info rm-flash--pop">
             <div class="rm-flash__body">
                 <span class="rm-flash__icon"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8.7 3.3a1 1 0 0 1 0 1.4L7.4 6H11a6 6 0 1 1-6 6 1 1 0 1 1 2 0 4 4 0 1 0 4-4H7.4l1.3 1.3a1 1 0 1 1-1.4 1.4l-3-3a1 1 0 0 1 0-1.4l3-3a1 1 0 0 1 1.4 0z"/></svg></span>
-                <span>Removed the visit for <b>{{ flash.student.get_full_name }}</b>{% if flash.day != today %} on {{ flash.day|date:"j M" }}{% endif %}.</span>
+                <span>{{ flash.text }}</span>
             </div>
             <form method="post" action="{% url 'youth-daily-attendance' %}" hx-post="{% url 'youth-daily-attendance' %}" hx-swap="none" hx-disabled-elt="find button">
                 {% csrf_token %}
@@ -13,18 +13,17 @@
             </form>
         </div>
     {% elif flash %}
-        <div class="rm-flash rm-flash--pop{% if not flash.created %} rm-flash--info{% endif %}">
+        <div class="rm-flash rm-flash--pop{% if not flash.changed %} rm-flash--info{% endif %}{% if flash.action == 'out' %} rm-flash--out{% endif %}">
             <div class="rm-flash__body">
-                <span class="rm-flash__icon"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0z" clip-rule="evenodd"/></svg></span>
-                <span>
-                    {% if flash.created %}<b>{{ flash.student.get_full_name }}</b> is marked present{% if flash.record.attendance_clock_in %} at {{ flash.record.attendance_clock_in|time:"g:i A" }}{% else %} for {{ flash.record.attendance_date|date:"j M" }}{% endif %}.{% else %}<b>{{ flash.student.get_full_name }}</b> had already checked in{% if flash.record.attendance_clock_in %} at {{ flash.record.attendance_clock_in|time:"g:i A" }}{% endif %}. Nothing changed.{% endif %}
-                    <span class="rm-muted">{{ flash.student.badge_id }}</span>
-                </span>
+                <span class="rm-flash__icon">{% if flash.action == "out" or flash.action == "all_out" %}<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 4.5A1.5 1.5 0 0 1 4.5 3h5a1 1 0 1 1 0 2H5v10h4.5a1 1 0 1 1 0 2h-5A1.5 1.5 0 0 1 3 15.5v-11zm10.3 1.8a1 1 0 0 1 1.4 0l3 3a1 1 0 0 1 0 1.4l-3 3a1 1 0 0 1-1.4-1.4L14.6 11H8a1 1 0 1 1 0-2h6.6l-1.3-1.3a1 1 0 0 1 0-1.4z"/></svg>{% else %}<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0z" clip-rule="evenodd"/></svg>{% endif %}</span>
+                <span>{{ flash.text }}{% if flash.student %} <span class="rm-muted">{{ flash.student.badge_id }}</span>{% endif %}</span>
             </div>
-            {% if flash.created %}
+            {% if flash.undo %}
                 <form method="post" action="{% url 'rm-undo-checkin' %}" hx-post="{% url 'rm-undo-checkin' %}" hx-swap="none" hx-disabled-elt="find button">
                     {% csrf_token %}
                     <input type="hidden" name="record_id" value="{{ flash.record.id }}">
+                    <input type="hidden" name="undo" value="{{ flash.undo }}">
+                    {% if flash.previous_out %}<input type="hidden" name="previous_out" value="{{ flash.previous_out|time:'H:i' }}">{% endif %}
                     <input type="hidden" name="on" value="{{ day|date:'Y-m-d' }}">
                     <button class="rm-btn rm-btn--ghost rm-btn--sm" type="submit">Undo</button>
                 </form>

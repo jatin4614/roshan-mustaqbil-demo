@@ -52,6 +52,8 @@ PostgreSQL and `DEBUG` off.
 
 | What | Where |
 |---|---|
+| One-click setup on a Windows PC: Python, packages, settings, database, administrator, optional demo data, desktop shortcut | `setup.bat`, `scripts/setup.ps1` |
+| Start file for that PC (data check, app window, optional dev tunnel) | `scripts/start.bat` |
 | Production Docker image (Gunicorn, non-root user, health check) | `Dockerfile`, `docker/gunicorn.conf.py` |
 | Start-up script: waits for PostgreSQL, runs migrations, creates the administrator (the only sign-in) and the demo data (when `RM_SEED_DEMO_DATA=1`), removes the demo data when going live (`RM_REMOVE_DEMO_DATA=1`), and collects static files | `docker/entrypoint.sh` |
 | Listens on the platform's `$PORT` | `docker/gunicorn.conf.py` |
@@ -61,7 +63,7 @@ PostgreSQL and `DEBUG` off.
 | One-click Render setup: web service and PostgreSQL in Singapore | `render.yaml`, `RENDER_DEPLOYMENT.md` |
 | Refuses to start in production with a default `SECRET_KEY`, `ALLOWED_HOSTS=*` or a default `DB_INIT_PASSWORD` | `horilla/settings/security.py` |
 | Health checks at `/health/` and `/ready/`, not redirected to HTTPS (platforms probe over plain HTTP) | `horilla/urls.py`, `horilla/settings/security.py` |
-| Tunnel hostnames allowed in this PC's `.env` (not committed) | `.env` |
+| Tunnel hostnames allowed in this PC's `.env` (not committed; `setup.bat` writes them on a new PC) | `.env` |
 
 **Memory:** one app process uses about 360 MB, measured on this PC after
 loading every page type. The HR recruitment module loads a language model at
@@ -76,7 +78,8 @@ hosted app restarts with "out of memory", move to a plan with 1 GB or more.
 VS Code can forward a port on this PC to a public HTTPS address (Microsoft
 dev tunnels). Nothing to install.
 
-1. Start the app, if it isn't running:
+1. Start the app, if it isn't running: double-click the **Roshan
+   Mustaqbil** desktop shortcut (or `scripts\start.bat`), or run
 
    ```bash
    .venv\Scripts\python manage.py runserver 127.0.0.1:8001
@@ -94,10 +97,30 @@ Visitors may see a one-time dev tunnels notice page; they click **Continue**.
 The link stops when you stop forwarding, close VS Code or the PC sleeps.
 There are bandwidth limits on tunnels, generous for a demo.
 
-**Already done on this PC:** `.env` allows the tunnel hostnames. Without it,
-Django answers "Bad Request (400)" to the new address, and signing in fails
-with "CSRF verification failed (403)". On another machine, add these lines to
-`.env` and restart the app:
+### A link that stays the same: the devtunnel command
+
+VS Code gives a new address each time. For a fixed address, use Microsoft's
+`devtunnel` command, which the start file can run for you:
+
+```bash
+winget install Microsoft.devtunnel
+devtunnel user login
+devtunnel create --allow-anonymous
+devtunnel port create <tunnel-id> -p 8001
+```
+
+`devtunnel create` prints the tunnel's ID (something like
+`giant-dog-0xqt2qr.inc1`). From then on, start the app with
+`scripts\start.bat <tunnel-id>` (or set `RM_TUNNEL_ID` once with
+`setx RM_TUNNEL_ID <tunnel-id>` and use the desktop shortcut): it opens a
+second window, "Roshan Mustaqbil public link - keep open", and the link is
+the same every time, e.g. `https://2h8hdq5h-8001.inc1.devtunnels.ms`.
+`devtunnel show <tunnel-id>` shows it. Unused tunnels expire after 30 days.
+
+**Already done by `setup.bat`:** `.env` allows the tunnel hostnames. Without
+it, Django answers "Bad Request (400)" to the new address, and signing in
+fails with "CSRF verification failed (403)". On a machine set up by hand, add
+these lines to `.env` and restart the app:
 
 ```ini
 ALLOWED_HOSTS=localhost,127.0.0.1,.devtunnels.ms,.trycloudflare.com,.ngrok-free.app,.ngrok-free.dev,.app.github.dev
@@ -276,7 +299,7 @@ few dollars a month. It has no advantage over Railway for this demo.
 | `CSRF_TRUSTED_ORIGINS` | `https://` + the hostname, e.g. `https://*.up.railway.app` | Without it, signing in fails. Not needed on Render. |
 | `SECURE_SSL_REDIRECT` | `True` where the platform doesn't already redirect to HTTPS | Sends visitors to the HTTPS address. |
 | `TIME_ZONE` | `Asia/Kolkata` | Visits are dated in India's time. |
-| `RM_SEED_DEMO_DATA` | `1` for a demo, `0` for real use | Loads the 960 demo students on the first start and adds the day's check-ins on later starts. |
+| `RM_SEED_DEMO_DATA` | `1` for a demo, `0` for real use | Loads the 960 demo students on the first start and adds the day's check-ins and check-outs on later starts. |
 | `RM_REMOVE_DEMO_DATA` | `1` for one deploy when going live | Removes the demo students on start-up, for hosts without a shell. |
 | `DEMO_ADMIN_USERNAME` / `DEMO_ADMIN_PASSWORD` | `admin` / your choice | The administrator, the only sign-in. |
 | `GUNICORN_WORKERS` / `GUNICORN_THREADS` | `1` / `1`–`4` | Keeps memory within small plans. |
