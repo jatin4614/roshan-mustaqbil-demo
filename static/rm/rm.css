@@ -900,22 +900,27 @@ body.dark .rm-btn--primary { background: linear-gradient(180deg, #3cb3a5, #2fa39
 }
 body.dark .rm-page .rm-btn--secondary, body.dark .rm-btn--secondary { border-color: rgba(255, 255, 255, 0.14); }
 
-/* The app's own frame (header and menu) is glass too. */
-body.rm-shell #mainHeader {
-    background: rgba(255, 255, 255, 0.5) !important;
-    border-bottom-color: rgba(255, 255, 255, 0.7) !important;
-    -webkit-backdrop-filter: var(--rm-glass-blur);
-    backdrop-filter: var(--rm-glass-blur);
-}
-body.rm-shell #sidebar {
-    background: rgba(255, 255, 255, 0.52) !important;
-    border-right-color: rgba(255, 255, 255, 0.7) !important;
+/* The app's own frame (header and menu) is glass too. The blur sits on a
+ * layer behind each of them, never on the element itself: backdrop-filter
+ * on the menu would make it the containing block of its fixed-position
+ * submenus, and its overflow: hidden would then clip them out of sight. */
+body.rm-shell #mainHeader, body.rm-shell #sidebar { background: transparent !important; }
+body.rm-shell #mainHeader { border-bottom-color: rgba(255, 255, 255, 0.7) !important; }
+body.rm-shell #sidebar { border-right-color: rgba(255, 255, 255, 0.7) !important; }
+body.rm-shell #mainHeader::before, body.rm-shell #sidebar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: rgba(255, 255, 255, 0.52);
     -webkit-backdrop-filter: var(--rm-glass-blur);
     backdrop-filter: var(--rm-glass-blur);
 }
 body.rm-shell #sidebar .sideboxmain:not(.sidebox-current) { background-color: rgba(255, 255, 255, 0.4); }
-body.dark.rm-shell #mainHeader { background: rgba(14, 22, 30, 0.55) !important; border-bottom-color: rgba(255, 255, 255, 0.06) !important; }
-body.dark.rm-shell #sidebar { background: rgba(14, 22, 30, 0.6) !important; border-right-color: rgba(255, 255, 255, 0.06) !important; }
+body.dark.rm-shell #mainHeader { border-bottom-color: rgba(255, 255, 255, 0.06) !important; }
+body.dark.rm-shell #sidebar { border-right-color: rgba(255, 255, 255, 0.06) !important; }
+body.dark.rm-shell #mainHeader::before, body.dark.rm-shell #sidebar::before { background: rgba(14, 22, 30, 0.58); }
 body.dark.rm-shell #sidebar .sideboxmain:not(.sidebox-current) { background-color: rgba(255, 255, 255, 0.04); }
 
 /* Sign-in: the same morning, with the mark and one glass panel. */
@@ -927,12 +932,12 @@ body.rm-signin::before { animation: rm-dawn 1.6s ease-out both; }
 /* Solid panels when transparency is unwelcome or unsupported. */
 @media (prefers-reduced-transparency: reduce) {
     .rm-card, .rm-kpis, .rm-login__form, .rm-tabs a, .rm-flash, .rm-notice, .rm-table th,
-    body.rm-shell #mainHeader, body.rm-shell #sidebar, .rm-btn--secondary {
+    body.rm-shell #mainHeader::before, body.rm-shell #sidebar::before, .rm-btn--secondary {
         -webkit-backdrop-filter: none !important;
         backdrop-filter: none !important;
     }
     .rm-card, .rm-kpis, .rm-login__form, .rm-table th { background: var(--rm-surface) !important; }
-    body.rm-shell #mainHeader, body.rm-shell #sidebar { background: var(--rm-surface) !important; }
+    body.rm-shell #mainHeader::before, body.rm-shell #sidebar::before { background: var(--rm-surface) !important; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     .rm-card, .rm-kpis, .rm-login__form, .rm-table th { background: rgba(255, 255, 255, 0.94); }

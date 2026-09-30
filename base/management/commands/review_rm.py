@@ -162,6 +162,15 @@ class Command(BaseCommand):
             if rule.type == "error" or (rule.type == "qualified-rule" and ";" in tinycss2.serialize(rule.prelude))
         ]
         self.verify("rm.css has no broken rules", not broken, ", ".join(broken))
+        # backdrop-filter on the menu or header themselves would make them the
+        # containing block of their fixed-position submenus and dropdowns,
+        # which the menu's overflow: hidden then clips out of sight.
+        trapping = [
+            tinycss2.serialize(rule.prelude).strip()[:60] for rule in rules
+            if rule.type == "qualified-rule" and "backdrop-filter" in tinycss2.serialize(rule.content)
+            and re.search(r"#(sidebar|mainHeader)(?![\w-]|::?(before|after))", tinycss2.serialize(rule.prelude))
+        ]
+        self.verify("The menu and header carry no blur themselves (it would hide their submenus)", not trapping, "; ".join(trapping))
         selectors = " ".join(tinycss2.serialize(rule.prelude) for rule in rules if rule.type == "qualified-rule")
         keys = set(ENGAGEMENT_KEYS.values()) | set(GOAL_KEYS.values()) | {"muted", "call", "good", "neutral", "lost", "female", "male", "none"}
         keys |= {f"age-{index}" for index in range(7)}
