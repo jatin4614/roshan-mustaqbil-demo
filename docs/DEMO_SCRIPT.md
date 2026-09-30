@@ -114,7 +114,7 @@ the students named are always the same after a fresh seed.
 
 1. Click **Open the call list**. The first tab is **New students who didn't
    come back**: students who enrolled 7 to 60 days ago and haven't been back
-   (Sajad Shah, enrolled a week ago, is at the top). A call in the first
+   (the most recent enrollees are at the top). A call in the first
    weeks brings many of them back. Then come **Regulars who missed this
    week**, **Slipping away** and **Inactive**. Older students who only came
    to enroll are on the Inactive list, tagged "Only came to enroll".
