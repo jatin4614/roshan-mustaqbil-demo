@@ -284,7 +284,7 @@ def _filter_chips(filters, base_url):
 def _export_students(queryset, today):
     response, writer = csv_response(f"rm-students-{today.isoformat()}.csv", [
         "Registration number", "Name", "Phone", "Gender", "Date of birth", "Age group", "Area", "Address", "Qualification",
-        "School / college", "Career goal", "Exam", "Reason for joining", "Support needed",
+        "School / college", "Career goal", "Exam", "Reason for enrolling", "Support needed",
         "Expectations", "Status", "Visits", "Last visit", "Enrolled on", "Came back after enrolling", "Guardian name",
         "Guardian phone", "Doing now", "Last contacted", "Call again on", "Follow-up notes", "Moved on", "Call list",
     ])

@@ -93,7 +93,7 @@
                     </select>
                 </div>
                 <div class="rm-field">
-                    <label for="f-purpose">Reason for joining</label>
+                    <label for="f-purpose">Reason for enrolling</label>
                     <select id="f-purpose" name="purpose" data-autosubmit>
                         <option value="">Any reason</option>
                         {% for value, label in purposes %}<option value="{{ value }}"{% if filters.purpose == value %} selected{% endif %}>{{ label }}</option>{% endfor %}

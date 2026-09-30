@@ -1,190 +1,271 @@
 # Roshan Mustaqbil: demo script
 
-A walkthrough of about 15 minutes, told as a day at the centre. One person
-runs the app: the centre's **administrator**, who marks attendance at the
-desk in the morning, calls students who have stopped coming, and looks at the
-bigger picture. There is one sign-in, and it can do everything.
+A complete script for presenting the app in about 20 minutes. It tells one
+story, a day at the centre, and one person runs everything: the centre's
+**administrator**, who marks attendance at the desk, enrolls walk-ins, calls
+students who have stopped coming, and looks at the bigger picture.
 
-One idea runs through the app: **students enroll in person at the centre.**
-There is no online sign-up. The day a student enrolls is their first visit,
-so every enrolled student has come at least once. The question the centre
-cares about is who comes back.
+Each section says what to **say**, what to **do**, and what the audience
+**will see**. The students named are always the same after a fresh seed;
+numbers and dates move with the day the demo data was loaded, so the script
+gives them as "about".
 
-Numbers change with the date and time of day. The ones below are examples;
-the students named are always the same after a fresh seed.
+| | |
+|---|---|
+| Length | About 20 minutes, plus questions |
+| Sign-in | `admin` / `Admin123` (the only account) |
+| On this PC | http://127.0.0.1:8001 |
+| Shared link | The dev tunnel link (see `docs/DEPLOYMENT_OPTIONS.md`, section 1) |
+| Have ready | `docs/demo/sample-students.csv`, for the import step |
 
-## Before the demo
+The one idea to land: **students enroll in person at the centre.** There's
+no online sign-up, so the day a student enrolls is their first visit, and the
+question the centre cares about is who comes back.
 
-1. Start the app (from `O:\RM\horilla-hr`):
+---
+
+## Part A: Getting ready
+
+### The day before
+
+1. Put the demo data in a known state:
 
    ```bash
-   .venv\Scripts\python manage.py runserver 127.0.0.1:8001
+   .venv\Scripts\python manage.py seed_youth_centre_demo --reset
    ```
 
-   To show it on other devices, share a link (see `docs/DEPLOYMENT_OPTIONS.md`,
-   section 1: VS Code port forwarding).
+   This recreates the 960 demo students and removes anyone added during
+   earlier rehearsals (walk-ins, imported students).
 
-2. Fill in today's check-ins so far (run it shortly before the demo; it only
-   adds visits for students who are still coming):
+2. Change the password if the link will be shared beyond the audience:
+   `.venv\Scripts\python manage.py changepassword admin`. The script below
+   assumes `Admin123`.
 
-   ```bash
-   .venv\Scripts\python manage.py seed_youth_centre_demo
-   ```
+### 30 minutes before
 
-3. Check the data: `.venv\Scripts\python manage.py review_rm` should end
-   with "0 failed".
+1. Double-click **Start RM demo** (`scripts\start_demo.bat`). It:
+   - adds today's check-ins so far (the demo centre opens at 9, busiest
+     around 10), so "Present today" looks real;
+   - checks the data (`review_rm` should end with "0 failed");
+   - opens two windows, **RM demo server** and **RM public link**: keep
+     both open for the whole demo;
+   - opens the app in your browser.
+2. Sign in as `admin` / `Admin123`.
+3. Browser zoom at 100%, window at least 1280 pixels wide, other tabs closed.
+   Light theme is easiest on a projector.
+4. If people will follow on their own devices, send them the link. The first
+   time, they see a "dev tunnel" notice page: they click **Continue**.
 
-4. Go to `http://127.0.0.1:8001` and sign in as `admin` / `Admin123`.
+### 5 minutes before
 
-5. Have `docs/demo/sample-students.csv` ready for the import step.
+- Open **Dashboard** and check the numbers look alive (someone present
+  today, a trend line, "Waiting for a call").
+- Close any open menus or messages. Start the demo on the dashboard or the
+  sign-in page.
 
-## 1. The question (30 seconds)
+---
 
+## Part B: The demo
+
+### 1. The question (1 minute)
+
+**Say:**
 > "Around 960 young people have enrolled at Roshan Mustaqbil, always in
-> person at the centre, but only 150 to 250 come regularly. The centre needs
-> to mark who comes each day, understand who they are and what they need,
-> and find out what happened to everyone else, starting with the newest
-> students who haven't come back."
+> person at the centre, but only about 230 have come in the last month. The
+> centre needs three things: mark who comes each day, understand who they
+> are and what they need, and find out what happened to everyone else,
+> starting with new students who haven't come back."
 
-## 2. The sign-in and the look (30 seconds)
+**Say:** "One person runs this app: the centre's administrator. There's one
+sign-in, and it does everything."
 
-1. The sign-in page: the RM mark over the Kupwara hills, and one glass
-   panel. There's one account: the administrator's.
-2. Every screen sits on the same morning backdrop, with frosted-glass
-   panels. The moon button (top right) switches to a night version.
+### 2. The sign-in and the look (1 minute)
 
-## 3. The desk in the morning (3 minutes)
+**Do:** show the sign-in page, then sign in.
 
-1. **Attendance > Mark attendance**. One big search box.
-2. **A new student walks in.** Type `Rafiq Sheikh`: no match. Click **enroll
-   them as a new student**; the name is already filled in.
-   - The page says it plainly: students enroll in person, so enrolling also
-     marks them present.
-   - Show the sections: goal and exam; the Defence entry question that
-     appears only when the goal is Defence; "date of birth, or approximate
-     age".
-   - **Enroll and mark present** saves the student and records today as their
-     first visit. Back at the desk, he's in today's list with an **Enrolled**
-     tag instead of a remove button: the enrollment day can't be deleted on
-     its own.
-   - Try enrolling with an existing phone number (`9419690461`): the form
-     warns the student may already be enrolled and links to Yasir Dar.
-3. **A student comes back after months away.** Type `RM-0018` and press
-   **Enter**. Mehak Hajam, who hasn't been in since July, is marked present
-   with the time, and the box clears for the next student. (Typing alone
-   never marks anyone; only Enter does.)
-   - Press **Undo** in the green message: the mark is removed.
-4. **By name.** Type `bhat`. The list shows guardian and area, so two
-   students with the same name can be told apart, and says how many more
-   match: keep typing to narrow it.
-5. **Siblings on one phone.** Type `9419419259` and press **Enter**. Nobody
-   is marked: Aadil Dar and Mudasir Dar share this number, so you choose the
-   right one.
-6. **Regulars not in yet.** Clear the box: students who came 3 or more times
-   in the last two weeks but not today, each with one-click **Mark present**.
-7. **A missed day.** Change "Marking attendance for" to yesterday: the box
-   turns saffron, and marks are saved for that day without a time. Change it
-   back to today.
+**They'll see:** the RM mark over the Kupwara hills, and one glass panel.
+Every screen sits on the same morning backdrop with frosted-glass panels.
 
-## 4. The dashboard (3 minutes)
+**Do:** click the **moon** button (top right) to show the night version,
+then the **light bulb** button (same place) to come back.
 
-1. **Dashboard** in the menu. **The headline.** "About 230 of the centre's
-   880 current students came in the last 30 days", with the change against
-   30 days ago. The six-month line shows the rise to a July peak and the fall
-   since: something worth acting on.
-2. The legend gives plain definitions: **Active** (came in the last 30
+### 3. The desk in the morning (4 minutes)
+
+**Do:** menu **Attendance > Mark attendance**.
+
+**Say:** "This is the screen the desk keeps open all day. One search box."
+
+1. **A new student walks in.**
+   - **Do:** type `Rafiq Sheikh`. **They'll see:** no match.
+   - **Do:** click **enroll them as a new student**. The name is already
+     filled in.
+   - **Say:** "Students enroll in person, so enrolling also marks them
+     present. There's no online form."
+   - **Do:** show the sections: Student details, Goal and studies, Why they
+     came, Guardian. Point out "date of birth, or approximate age".
+   - **Do:** fill in phone `9419000123`, gender **Male**, age `19`. For
+     career goal pick **Defence**: the entry-scheme question appears only
+     then; pick **NDA**.
+   - **Do:** **Enroll and mark present**.
+   - **They'll see:** back at the desk, "Rafiq Sheikh is enrolled… and
+     marked present", and he's in today's list with an **Enrolled** tag
+     instead of a remove button.
+   - **Say:** "The enrollment day always counts as a visit, so it can't be
+     deleted by accident."
+2. **Duplicate check.**
+   - **Do:** menu **Students > Enroll student**: name `Yasir Dar`, phone
+     `9419690461`, gender **Male**, age `20`, **Enroll and mark present**.
+   - **They'll see:** "This may be a student who's already enrolled", with a
+     link to Yasir Dar (RM-0404). **Do:** click **Cancel**.
+3. **A student comes back after months away.**
+   - **Do:** back at **Mark attendance**, type `RM-0018` and press
+     **Enter**.
+   - **They'll see:** "Mehak Hajam is marked present at 10:xx", and the box
+     clears for the next student.
+   - **Say:** "She hadn't been in for over two months. Typing alone never
+     marks anyone; only Enter does, and only for an exact registration or
+     phone number."
+   - **Do:** click **Undo** in the green message. The mark is removed.
+4. **By name.**
+   - **Do:** type `bhat`. **They'll see:** matching students with guardian
+     and area, so two students with the same name can be told apart, and
+     "Showing 8 of 99 matches. Keep typing to narrow it down."
+5. **Siblings on one phone.**
+   - **Do:** type `9419419259` and press **Enter**.
+   - **They'll see:** nobody is marked: Aadil Dar and Mudasir Dar share this
+     number, so you choose the right one.
+6. **Regulars not in yet.**
+   - **Do:** clear the box. **They'll see:** students who came 3 or more
+     times in the last two weeks but not today, each with one-click **Mark
+     present**.
+7. **A paper register from a missed day.**
+   - **Do:** change **Marking attendance for** to yesterday. **They'll
+     see:** the box turns saffron; marks are saved for that day, without a
+     time. **Do:** change it back to today (**Back to today**).
+
+### 4. The dashboard (3 minutes)
+
+**Do:** menu **Dashboard**.
+
+1. **The headline.** "About 230 of the centre's 880 current students came
+   in the last 30 days", with the change against 30 days ago.
+   **Say:** "The line shows the rise to a July peak and the fall since.
+   That's the story this app helps the centre act on."
+2. **The legend** gives plain definitions: **Active** (came in the last 30
    days), **Slipping away** (30–59 days), **Inactive** (60+ days) and **Moved
-   on** (selected, joined a course, moved away, stopped). Moved-on students no
-   longer count as failures.
-3. **The four numbers**:
-   - *Present today, so far* against *a typical open day by this time*.
-   - *Visits per active student*: the typical number, counting students
-     enrolled over a month ago (newer ones haven't had a month yet).
-   - *Enrolled this month, so far*: how many of those who enrolled over a
-     week ago **have come back**, and how many enrolled too recently to tell.
-   - *Waiting for a call*: the total of the four call lists. It's the same
-     number on the call list and in the downloaded call sheet.
+   on** (selected, joined a course, moved away, stopped).
+   **Say:** "Students who were selected or joined a course don't count as
+   failures; they've moved on."
+3. **The four numbers:**
+   - *Present today, so far*, against a typical open day by this time.
+   - *Visits per active student*, for students enrolled over a month ago.
+   - *Enrolled this month*: how many of those who enrolled over a week ago
+     have come back, and how many enrolled too recently to tell.
+   - *Waiting for a call* (about 430): the total of the four call lists.
+     **Say:** "It's the same number on the call list and in the downloaded
+     call sheet."
 4. **Who to call** lists the four call lists, easiest to win back first.
-   **What happened to students who stopped coming** answers the centre's
-   question: the saffron bar is those not contacted yet; the rest is what
-   calls found out (studying, preparing at home, employed, selected, moved
-   away). Click any bar for the list of students.
+5. **What happened to students who stopped coming**: the saffron bar is
+   students not contacted yet; the rest is what calls found out (studying,
+   preparing at home, employed, selected, moved away).
+   **Do:** click any bar: it opens the list of those students.
 
-## 5. Follow-up calls (3 minutes)
+### 5. Follow-up calls (3 minutes)
 
-1. Click **Open the call list**. The first tab is **New students who didn't
-   come back**: students who enrolled 7 to 60 days ago and haven't been back
-   (the most recent enrollees are at the top). A call in the first
-   weeks brings many of them back. Then come **Regulars who missed this
-   week**, **Slipping away** and **Inactive**. Older students who only came
-   to enroll are on the Inactive list, tagged "Only came to enroll".
-2. Each row has the phone number (tap to call on a phone), the guardian's
+**Do:** on the dashboard, **Open the call list**.
+
+1. **Say:** "The first list is **New students who didn't come back**:
+   students who enrolled one to eight weeks ago and haven't returned. A call
+   in the first weeks brings many of them back." Then come **Regulars who
+   missed this week**, **Slipping away** and **Inactive**. Older students who
+   only came to enroll are on the Inactive list, tagged **Only came to
+   enroll**.
+2. Each row shows the phone number (tap to call on a phone), the guardian's
    number, when they enrolled or last came, and the last call.
-3. Log a call: choose **Plans to come back**, type a note, **Save & next**.
-   The row turns into a confirmation, the counts at the top and on the tabs
-   go down, and the cursor moves to the next student. This student comes back
-   to the list in 14 days if they haven't returned; students who couldn't be
-   reached come back after 7.
+3. **Do:** on the first student, choose **Plans to come back**, type "Will
+   come on Monday", **Save & next**.
+   **They'll see:** the row turns into a confirmation, "Waiting for a call"
+   and the tab count go down by one, and the cursor moves to the next
+   student.
+   **Say:** "They'll come back to the list in 14 days if they haven't
+   returned. Students who couldn't be reached come back after 7."
 4. The numbers at the top show whether calling works: calls this week, how
    often the student was reached, and **came back after a call**.
 
-## 6. Students (2 minutes)
+### 6. Students (2 minutes)
 
-1. **Students > All students**. Open **More filters** and choose **Came back
-   after enrolling: No**, then **Area: Handwara**: a call list for someone
-   visiting Handwara. Each filter shows as a removable chip.
-2. **Download CSV** gives the list as a call sheet, with visits, whether they
-   came back after enrolling, guardian numbers, last contact, notes and which
-   call list they're on. It opens in Excel with Urdu and Hindi names intact.
-3. Open **Aadil Dar** (RM-0290): the banner says he enrolled on 19 August,
-   hasn't been back since, and when he was last called. The first visit in
-   his list is labelled **Enrolled**; there's also the 12-month visit
+**Do:** menu **Students > All students**.
+
+1. **Do:** **More filters**, choose **Came back after enrolling: No**, then
+   **Area: Handwara**. **Say:** "A call list for someone visiting Handwara."
+   Each filter shows as a chip you can remove.
+2. **Do:** **Download CSV**. **Say:** "It opens in Excel with Urdu and Hindi
+   names intact, with visits, whether they came back after enrolling,
+   guardian numbers, the last call and which call list they're on."
+3. **Do:** search `RM-0290` and open **Aadil Dar**.
+   **They'll see:** a banner: he enrolled about six weeks ago, hasn't been
+   back since, and when he was last called (he's studying at school /
+   college). His one visit is labelled **Enrolled**. There's a 12-month visit
    calendar and the call history.
-4. Open a moved-on student, such as **Arif Rather** (RM-0198, selected). The
-   banner explains why he's no longer counted; **They're still a current
-   student** undoes it, and a check-in also brings a student back
-   automatically.
-5. **Edit details** has **Remove this student** for someone enrolled by
-   mistake (a duplicate, say). Don't click it in the demo.
+4. **Do:** search `RM-0198` and open **Arif Rather** (moved on: selected).
+   **Say:** "He's no longer counted as inactive. **They're still a current
+   student** undoes it, and a check-in brings a student back automatically."
+5. **Say:** "**Edit details** has **Remove this student**, for someone
+   enrolled by mistake, a duplicate for example." Don't click it.
 
-## 7. Understanding the centre (3 minutes)
+### 7. Understanding the centre (3 minutes)
 
-1. **Attendance > Attendance dashboard**: the busiest days (the centre is
-   closed on Sundays) and hours (a morning peak around 10), how many enrolled
-   this week, the most regular students, and how often each goal group comes.
-   Switch between 30, 60 and 90 days.
-2. **Career goals**: each goal group's split between active, slipping away
-   and inactive; Defence entry schemes (NDA, TES, CDS, AFCAT, Agniveer, TA /
-   JKLI) and other exams (UPSC, JKAS, JKSSB, JEE and more).
-3. **Analytics**:
-   - It opens on **Active students**, the people who actually use the centre;
-     switch to **Everyone enrolled** to compare. Filter by goal.
-   - **Didn't come back after enrolling** sits next to the status numbers.
-   - **New enrollments, and whether they came back**: every enrollment is a
-     first visit. Green came back, saffron only came to enroll, and grey
-     enrolled in the last 7 days (too early to tell). Above it: how many came
-     back within a week.
-   - **How long students kept coming before they stopped**, counted from the
-     day they enrolled. About 30% stopped within their first month; the
-     largest group kept coming for six months or more before stopping. So
-     both the first weeks and long-time students are worth a call.
-   - **Support they need**, with the share among students who stopped for
-     comparison; **Where they come from** by tehsil; **What students expect**
-     in their own words; and **Details to complete** for missing data.
+1. **Do:** menu **Attendance > Attendance dashboard**.
+   **They'll see:** daily visits, the busiest days of the week (closed on
+   Sundays) and times of day (a morning peak around 10), the most regular
+   students, and how often each goal group comes. **Do:** switch between 30,
+   60 and 90 days.
+2. **Do:** menu **Career goals**.
+   **They'll see:** each goal group (Defence, UPSC / Civil Services, NEET UG,
+   NEET PG, Other) split into active, slipping away and inactive; Defence
+   entry schemes (NDA, TES, CDS, AFCAT, Agniveer, TA / JKLI); and other
+   exams (JKSSB, JKAS, JEE, banking and more).
+3. **Do:** menu **Analytics**.
+   - It opens on **Active students**; switch to **Everyone enrolled** to
+     compare, and filter by goal.
+   - **New enrollments, and whether they came back**: green came back,
+     saffron only came to enroll, grey enrolled in the last 7 days (too
+     early to tell).
+   - **How long students kept coming before they stopped**, counted from
+     the day they enrolled. **Say:** "About a third stop within their first
+     month, and the largest group kept coming for six months or more. So
+     both the first weeks and long-time students are worth a call."
+   - **Support they need** (compared with students who stopped), **Where they
+     come from** by tehsil, **What students expect from RM** in their own
+     words, and **Details to complete** for missing data.
    - Most bars open the matching list of students.
 
-## 8. Bringing in the paper register (1 minute)
+### 8. Bringing in the paper register (1 minute)
 
-**Students > Import from a spreadsheet** is how the paper register gets in.
-**Download the template**, then choose `docs/demo/sample-students.csv` and
-**Check the file**. The preview marks two rows to add, one already enrolled
-(skipped) and one to fix (bad phone, no enrollment date). Because students
-enroll in person, the enrollment date is required: each imported student is
-recorded as present that day. **Import** adds the two students with their
-original enrollment dates. The **Past attendance** tab does the same for old
-attendance registers, and flags any visit dated before a student enrolled.
+**Do:** menu **Students > Import from a spreadsheet**.
 
-## Questions people ask
+1. **Say:** "This is how the existing paper register gets in."
+2. **Do:** **Download the template** (show it), then choose
+   `docs/demo/sample-students.csv` and **Check the file**.
+   **They'll see:** 2 to add, 1 already enrolled (skipped), 1 to fix (bad
+   phone number, no enrollment date).
+   **Say:** "Because students enroll in person, the enrollment date is
+   required, and each imported student is recorded as present that day."
+3. **Do:** **Import 2 students**.
+4. **Say:** "The **Past attendance** tab does the same for old attendance
+   registers, and flags any visit dated before a student enrolled."
+
+### 9. Close (30 seconds)
+
+**Say:**
+> "So: the desk marks attendance in seconds, every enrollment is a first
+> visit, the call lists tell you who to call first, and the dashboards show
+> who's coming, who's slipping away and what happened to them. One
+> administrator runs it all."
+
+---
+
+## Part C: Questions people ask
 
 - **Can students enroll online?** No. They enroll in person at the centre,
   which is why enrolling marks them present.
@@ -192,6 +273,11 @@ attendance registers, and flags any visit dated before a student enrolled.
   administrator signs in.
 - **Can more staff use it?** It's set up for one administrator who does
   everything. Anyone else who signs in sees a "no access" page.
+- **How is a student's progress tracked?** Three ways, each with a clear
+  source: attendance (recorded at the desk), their goal (entered once at
+  enrollment), and follow-up calls (what they're doing now, and whether they
+  were selected or joined a course). Nobody has to keep a progress score up
+  to date.
 - **What if the internet drops?** The desk shows "Not saved: the connection
   dropped", and the mark can be tried again. Nothing is silently lost.
 - **Can we correct mistakes?** Undo or remove any mark. If an enrollment date
@@ -199,18 +285,48 @@ attendance registers, and flags any visit dated before a student enrolled.
   moves with it. A student enrolled by mistake can be removed.
 - **What counts as an open day?** A day with at least 5 visits, so a stray
   mark on a Sunday doesn't count.
-- **How is a student's progress tracked?** Three ways, each with a clear
-  source: attendance (whether they keep coming, recorded at the desk), their
-  goal (entered once at enrollment), and follow-up calls (what they're doing
-  now, and whether they were selected or joined a course). Nobody has to
-  keep a progress score up to date.
 - **Can it use our existing register?** Yes, through the spreadsheet import.
+- **Where does it run?** Here on this PC for the demo, shared through a
+  secure link. For daily use it can be hosted online; see
+  `docs/DEPLOYMENT_OPTIONS.md`.
 
-## After the demo
+---
+
+## Part D: If something goes wrong
+
+| What you see | What to do |
+|---|---|
+| The page doesn't load at all | Check the two windows, **RM demo server** and **RM public link**, are still open. If not, double-click **Start RM demo** again. The link stays the same. |
+| A "dev tunnel" notice page | Normal for the shared link the first time: click **Continue**. |
+| "Your account is locked" after wrong passwords | `.venv\Scripts\python manage.py axes_reset` |
+| "Present today" is 0 or very low | Early in the day. Run `.venv\Scripts\python manage.py seed_youth_centre_demo` (it only adds check-ins so far), then reload. |
+| Rafiq Sheikh or the imported students are already there | A rehearsal wasn't reset: see Part E. |
+| Something looks old after an update | Reload the page (Ctrl+R). |
+
+---
+
+## Part E: After the demo
 
 Put the demo data back as it was. This also removes Rafiq Sheikh, the two
-imported students and anyone else enrolled during the demo:
+imported students and anyone else added during the demo:
 
 ```bash
 .venv\Scripts\python manage.py seed_youth_centre_demo --reset
 ```
+
+Close the two windows to stop the app and the shared link.
+
+---
+
+## Cheat sheet
+
+| Step | Type or pick | Expect |
+|---|---|---|
+| New walk-in | `Rafiq Sheikh`, phone `9419000123`, Male, age `19`, Defence, NDA | No match, then enrolled and marked present |
+| Duplicate warning | phone `9419690461` | Links to Yasir Dar (RM-0404) |
+| Back after months | `RM-0018`, Enter | Mehak Hajam (away over two months) marked present; Undo |
+| Name search | `bhat` | 8 of 99 matches, "keep typing" |
+| Shared phone | `9419419259`, Enter | Aadil Dar and Mudasir Dar; nobody marked |
+| Didn't come back | `RM-0290` | Aadil Dar: enrolled about six weeks ago, not back since, called once |
+| Moved on | `RM-0198` | Arif Rather, selected |
+| Import | `docs/demo/sample-students.csv` | 2 to add, 1 already enrolled, 1 to fix |
