@@ -149,9 +149,8 @@ To share the app beyond the building, install Microsoft's dev tunnel tool
 (`winget install Microsoft.devtunnel`), create a tunnel once
 (`docs/DEPLOYMENT_OPTIONS.md`, section 1, "A link that stays the same"), and
 start the app with `scripts\start.bat <tunnel-id>`, or set `RM_TUNNEL_ID`.
-The installed app runs in its simple local mode, which shows technical
-details on error pages; for a link used every day, host it instead
-(`docs/DEPLOYMENT_OPTIONS.md`).
+Installs run with Django's debug mode off, so error pages never show
+technical details.
 
 ### By hand
 

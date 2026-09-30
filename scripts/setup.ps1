@@ -120,7 +120,11 @@ if (Test-Path $EnvFile) {
     $database = (Join-Path $App "roshan_mustaqbil.sqlite3") -replace "\\", "/"
     $lines = @(
         "# Roshan Mustaqbil settings for this PC, written by setup. Keep this file private.",
-        "DEBUG=True",
+        "DEBUG=False",
+        "# Plain http inside the building (a tunnel adds https), and static files served from the app's folders.",
+        "SESSION_COOKIE_SECURE=False",
+        "CSRF_COOKIE_SECURE=False",
+        "WHITENOISE_USE_FINDERS=True",
         "SECRET_KEY=$secret",
         "ALLOWED_HOSTS=$((($addresses + $tunnels) | Select-Object -Unique) -join ',')",
         "CSRF_TRUSTED_ORIGINS=http://localhost:8001,http://127.0.0.1:8001,https://*.devtunnels.ms,https://*.trycloudflare.com,https://*.ngrok-free.app,https://*.ngrok-free.dev,https://*.app.github.dev",

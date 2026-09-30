@@ -9,7 +9,10 @@
                 {% csrf_token %}
                 <input type="hidden" name="student_id" value="{{ flash.student.id }}">
                 <input type="hidden" name="on" value="{{ flash.day|date:'Y-m-d' }}">
-                <button class="rm-btn rm-btn--ghost rm-btn--sm" type="submit">Mark present again</button>
+                <input type="hidden" name="action" value="restore">
+                {% if flash.restore_in %}<input type="hidden" name="restore_in" value="{{ flash.restore_in|time:'H:i' }}">{% endif %}
+                {% if flash.restore_out %}<input type="hidden" name="restore_out" value="{{ flash.restore_out|time:'H:i' }}">{% endif %}
+                <button class="rm-btn rm-btn--ghost rm-btn--sm" type="submit">Put the visit back</button>
             </form>
         </div>
     {% elif flash %}

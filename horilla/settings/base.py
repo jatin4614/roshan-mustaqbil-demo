@@ -296,6 +296,9 @@ if REDIS_URL:
 # ========================================
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# A single-PC install serves static files straight from the source folders,
+# so an update needs no collectstatic step.
+WHITENOISE_USE_FINDERS = env.bool("WHITENOISE_USE_FINDERS", default=False)
 STATICFILES_DIRS = [BASE_DIR / "static"]
 # STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 STORAGES = {

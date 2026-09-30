@@ -145,7 +145,10 @@ def quick_attendance(request):
     query = request.GET.get("q", "").strip()
     if request.method == "POST":
         student = get_object_or_404(student_queryset(), id=request.POST.get("student_id"))
-        record, action = _desk_action(student, day, today, request.POST.get("action", "in"), request.user)
+        if request.POST.get("action") == "restore":
+            record, action = _restore_visit(student, day, request.POST.get("restore_in"), request.POST.get("restore_out"), request.user)
+        else:
+            record, action = _desk_action(student, day, today, request.POST.get("action", "in"), request.user)
         flash = _flash(student, record, action)
         if request.headers.get("x-requested-with") == "XMLHttpRequest":
             return JsonResponse({"action": action, "student": student.get_full_name(), "registration": student.badge_id, "time": timezone.localtime().strftime("%I:%M %p")})
@@ -164,6 +167,25 @@ def quick_attendance(request):
             return _desk_update(request, day, _flash(exact[0], record, action))
         return _desk_update(request, day, None, query)
     return render(request, "rm/quick_attendance.html", _desk_context(request, query, day))
+
+
+def _restore_visit(student, day, arrived, left, actor):
+    """Put back a visit removed by mistake, with the times it had."""
+    def hhmm(value):
+        try:
+            return datetime.strptime(value or "", "%H:%M").time()
+        except ValueError:
+            return None
+
+    record, created = mark_student_present(student, day=day, actor=actor)
+    if not created:
+        return record, "recorded"  # marked again in the meantime
+    arrived, left = hhmm(arrived), hhmm(left)
+    Attendance.objects.filter(pk=record.pk).update(attendance_clock_in=arrived, attendance_clock_in_date=day if arrived else None)
+    record.attendance_clock_in = arrived
+    if arrived and left:
+        check_out(record, left)
+    return record, "restored"
 
 
 def _desk_action(student, day, today, action, actor):
@@ -194,6 +216,7 @@ def _flash(student, record, action):
     texts = {
         "in": f"{name} is checked in at {at(arrived)}." if arrived else f"{name} is marked present for {record.attendance_date:%d %b}.",
         "timed": f"{name} is checked in at {at(arrived)}. They were already marked present today, without a time.",
+        "restored": f"{name}'s visit is back" + (f", {at(arrived)} to {at(left)}." if arrived and left else f", in since {at(arrived)}." if arrived else "."),
         "out": f"{name} is checked out at {at(left)}, after {stay_label(stay_minutes(record))}." if stay_minutes(record) is not None else f"{name} is checked out at {at(left)}.",
         "back": f"{name} is back in the centre (first came at {at(arrived)}).",
         "just_in": f"{name} checked in at {at(arrived)}, just now. Nothing changed.",
@@ -209,7 +232,7 @@ def _flash(student, record, action):
         undo = ""  # enrolling is undone by removing the student, not the visit
     return {
         "action": action, "student": student, "record": record, "text": texts[action], "undo": undo,
-        "changed": action in {"in", "out", "back", "timed"}, "previous_out": getattr(record, "previous_out", None),
+        "changed": action in {"in", "out", "back", "timed", "restored"}, "previous_out": getattr(record, "previous_out", None),
     }
 
 
@@ -256,9 +279,10 @@ def undo_checkin(request):
         messages.info(request, ENROLLMENT_KEPT.format(name=record.employee_id.get_full_name()))
         return redirect("rm-student-profile", student_id=record.employee_id_id)
     student, day = record.employee_id, record.attendance_date
+    times = {"restore_in": record.attendance_clock_in, "restore_out": record.attendance_clock_out}  # for "Put the visit back"
     remove_visit_record(record)
     if _is_htmx(request):
-        return _desk_update(request, _desk_day(request, today), {"action": "removed", "undone": True, "student": student, "day": day, "changed": True, "undo": "",
+        return _desk_update(request, _desk_day(request, today), {"action": "removed", "undone": True, "student": student, "day": day, "changed": True, "undo": "", **times,
                                                                   "text": f"Removed the visit for {student.get_full_name()}" + (f" on {day:%d %b}." if day != today else ".")})
     messages.success(request, f"Removed the visit for {student.get_full_name()} on {day:%d %b %Y}.")
     target = request.POST.get("next", "")

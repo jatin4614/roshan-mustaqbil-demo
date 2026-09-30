@@ -107,7 +107,11 @@ else
     umask 077
     cat > .env <<EOF
 # Roshan Mustaqbil settings for this machine, written by setup. Keep this file private.
-DEBUG=True
+DEBUG=False
+# Plain http inside the building (a tunnel adds https), and static files served from the app's folders.
+SESSION_COOKIE_SECURE=False
+CSRF_COOKIE_SECURE=False
+WHITENOISE_USE_FINDERS=True
 SECRET_KEY=$secret
 ALLOWED_HOSTS=$hosts
 CSRF_TRUSTED_ORIGINS=http://localhost:8001,http://127.0.0.1:8001,https://*.devtunnels.ms,https://*.trycloudflare.com,https://*.ngrok-free.app,https://*.ngrok-free.dev,https://*.app.github.dev

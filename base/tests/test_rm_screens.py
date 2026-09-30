@@ -446,6 +446,20 @@ class CentreScreensTests(TestCase):
         self.assertContains(response, "Checked out 1 student at")
         self.assertFalse(in_centre_now().exists())
 
+    @at_three_pm
+    def test_putting_back_a_visit_removed_by_mistake_keeps_its_times(self):
+        student, headers = self.students[45], {"HTTP_HX_REQUEST": "true"}
+        record = self._checked_in(student, minutes_ago=120)
+        check_out(record, time(14, 30))
+        removed = self.client.post(reverse("rm-undo-checkin"), {"record_id": record.id, "undo": "in"}, **headers)
+        self.assertContains(removed, 'name="restore_in" value="13:00"')
+        self.assertContains(removed, 'name="restore_out" value="14:30"')
+        self.assertFalse(Attendance.objects.filter(employee_id=student, attendance_date=self.today).exists())
+        back = self.client.post(reverse("youth-daily-attendance"), {"student_id": student.id, "action": "restore", "restore_in": "13:00", "restore_out": "14:30"}, **headers)
+        self.assertContains(back, "visit is back, 1:00 PM to 2:30 PM.")
+        record = Attendance.objects.get(employee_id=student, attendance_date=self.today)
+        self.assertEqual((record.attendance_clock_in, record.attendance_clock_out, stay_minutes(record)), (time(13, 0), time(14, 30), 90))
+
     def test_correcting_a_visits_times(self):
         day = self.today - timedelta(days=2)
         record, _ = mark_student_present(self.students[37], day=day)
