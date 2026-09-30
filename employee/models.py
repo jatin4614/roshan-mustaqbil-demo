@@ -838,13 +838,6 @@ class StudentProfile(models.Model):
         ("Skill / Vocational", "Skill / vocational"),
         ("Other", "Other"),
     )
-    PREP_STAGES = (
-        ("Just starting", "Just starting"),
-        ("Building basics", "Building basics"),
-        ("Regular practice & mock tests", "Regular practice & mock tests"),
-        ("Appeared before", "Appeared before, trying again"),
-        ("Awaiting result", "Awaiting result"),
-    )
     PURPOSES = (
         ("Competitive Exam Preparation", "Competitive exam preparation"),
         ("Self Study", "Self study"),
@@ -903,8 +896,6 @@ class StudentProfile(models.Model):
     defence_entry = models.CharField(max_length=40, blank=True, choices=DEFENCE_ENTRIES)
     target_exam = models.CharField(max_length=40, blank=True, choices=TARGET_EXAMS)
     goal_detail = models.CharField(max_length=200, blank=True)
-    prep_stage = models.CharField(max_length=40, blank=True, choices=PREP_STAGES)
-    target_year = models.PositiveSmallIntegerField(null=True, blank=True)
     locality = models.CharField(max_length=40, blank=True, choices=LOCALITIES)
     expectations = models.TextField(blank=True)
     requirements = models.JSONField(default=list, blank=True)

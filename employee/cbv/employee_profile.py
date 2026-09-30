@@ -217,15 +217,6 @@ if not django_settings.YOUTH_CENTRE_MODE:
 
 EmployeeProfileView.add_tab(tabs=profile_tabs)
 
-if django_settings.YOUTH_CENTRE_MODE:
-    EmployeeProfileView.add_tab(
-        tab={
-            "title": _("Student Progress"),
-            "view": views.student_progress_tab,
-        }
-    )
-
-
 @method_decorator([login_required], name="dispatch")
 class GroupAssignView(View):
     """

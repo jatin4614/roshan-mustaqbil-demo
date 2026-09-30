@@ -188,15 +188,17 @@ def engagement_for(rng, registered_days_ago):
     return pick(rng, (("active", 10), ("dormant", 7), ("inactive", 73), ("once", 10)))
 
 
-def prep_for(rng, registered_days_ago, age):
-    if rng.random() < 0.22:
-        return ""  # not asked yet
-    if registered_days_ago < 60:
-        return pick(rng, (("Just starting", 50), ("Building basics", 40), ("Regular practice & mock tests", 10)))
-    return pick(rng, (("Building basics", 28), ("Regular practice & mock tests", 40), ("Appeared before", 20 if age > 18 else 5), ("Awaiting result", 12)))
-
-
 DAY_FACTOR = {0: 1.0, 1: 1.0, 2: 1.0, 3: 0.95, 4: 0.75, 5: 0.85, 6: 0.0}  # the centre is closed on Sundays
+
+
+def _keep_stream_stable(rng):
+    """Earlier versions drew a preparation stage and exam year here. Drawing
+    the same random numbers keeps every later value (and so the demo's
+    named students and their visits) unchanged."""
+    if rng.random() >= 0.22:
+        rng.random()  # the stage pick
+    if rng.random() < 0.8:
+        rng.random()  # the exam-year pick
 
 
 def arrival_time(rng):
@@ -363,11 +365,11 @@ class Command(BaseCommand):
             status = engagement_for(rng, (today - registered).days)
             status_totals[status] += 1
             exam, detail = target_exam_for(rng, goal)
+            defence = defence_entry_for(rng, age) if goal == "Defence" else ""
+            _keep_stream_stable(rng)
             profile = StudentProfile(
-                employee=student, career_goal=goal, locality=tehsil,
-                defence_entry=defence_entry_for(rng, age) if goal == "Defence" else "",
-                target_exam=exam, goal_detail=detail, prep_stage=prep_for(rng, (today - registered).days, age),
-                target_year=today.year + pick(rng, ((0, 35), (1, 40), (2, 15))) if rng.random() < 0.8 else None,
+                employee=student, career_goal=goal, locality=tehsil, defence_entry=defence,
+                target_exam=exam, goal_detail=detail,
                 purpose_of_rm=purpose_for(rng, goal), requirements=requirements_for(rng, goal),
                 expectations=rng.choice(EXPECTATIONS), registration_date=registered,
                 institution=institution_for(rng, qualification, goal),

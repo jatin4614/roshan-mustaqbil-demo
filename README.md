@@ -29,19 +29,19 @@ day a student enrolls is recorded as their first visit.
   joined a course, moved away or lost interest "move on" instead of counting
   as inactive for ever. "Waiting for a call" is the same number on the
   dashboard, the call list and the downloaded call sheet.
-- **Students**: search, filter (status, goal, exam, preparation stage, area,
+- **Students**: search, filter (status, goal, exam, area,
   support needed, age, gender, qualification, enrollment date, follow-up),
   sort, page through and download as CSV. Profiles show a 12-month visit
   calendar and the call history.
 - **Enrollment**: a sectioned form with duplicate warnings, 10-digit phone
-  checks, date of birth or approximate age, area, target exam, preparation
-  stage and exam year. Enrolling marks the student present on the enrollment
+  checks, date of birth or approximate age, area, career goal and the exam
+  or Defence entry scheme. Enrolling marks the student present on the enrollment
   date; that visit can't be deleted on its own, and correcting the date moves
   it. A student enrolled by mistake can be removed. Students never get a
   login.
 - **Attendance dashboard, career goals and analytics**: busiest days and
   hours, how often each goal group comes, Defence entry schemes and other
-  exams, preparation stages, exams coming up, enrollments and whether
+  exams, enrollments and whether
   students came back, how long they keep coming before they stop, age,
   gender, area, needs (compared with students who stopped) and expectations.
 - **Import**: bring existing registers and past attendance in from a CSV
@@ -54,27 +54,23 @@ day a student enrolls is recorded as their first visit.
 
 ## How a student's progress is tracked
 
-Progress is tracked in three layers, from what the centre sees every day to
-how things turn out:
+Three things, each with a clear source, so nobody has to keep a progress
+score up to date:
 
-1. **Coming to the centre** (automatic, from attendance). Every visit is
-   recorded, starting with the day they enrolled. From the last visit each
-   student is **Active** (came in the last 30 days), **Slipping away** (30–59
-   days) or **Inactive** (60+ days), and "didn't come back after enrolling"
-   picks out those who came only once. The profile shows a 12-month visit
-   calendar.
-2. **Preparing for their goal** (recorded at enrollment, updated on their
-   details): career goal, the exam or Defence entry scheme, the preparation
-   stage (just starting, building basics, regular practice and mock tests,
-   appeared before, awaiting result) and the exam year. **Career goals**
-   shows where each group stands.
-3. **How it turned out** (recorded from follow-up calls): what a student who
+1. **Attendance** (automatic, from the desk). Every visit is recorded,
+   starting with the day they enrolled. From the last visit each student is
+   **Active** (came in the last 30 days), **Slipping away** (30–59 days) or
+   **Inactive** (60+ days), and "didn't come back after enrolling" picks out
+   those who came only once. The profile shows a 12-month visit calendar.
+2. **Their goal** (entered once, at enrollment): the career goal and the exam
+   or Defence entry scheme they're aiming for. **Career goals** shows how
+   many students each goal has and how regularly each group comes.
+3. **Follow-up calls** (entered by whoever makes the call): what a student who
    stopped is doing now (studying, preparing at home, employed and so on),
    and outcomes that mean they have **moved on**: selected, joined a
    professional course, moved away or no longer interested.
 
-The preparation stage keeps only its latest value, so the app shows where
-each student is now rather than how their stage changed over time.
+Nobody has to fill in or update a progress score.
 
 ## Local demo
 

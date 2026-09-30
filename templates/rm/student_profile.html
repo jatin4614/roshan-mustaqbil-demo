@@ -101,8 +101,7 @@
                 <div><dt>Date of birth</dt><dd>{% if student.dob %}{{ student.dob|date:"j M Y" }} ({{ age_group }}){% else %}—{% endif %}</dd></div>
                 <div><dt>Area</dt><dd>{{ profile.locality|default:"—" }}</dd></div>
                 <div><dt>Qualification</dt><dd>{{ student.qualification|default:"—" }}</dd></div>
-                <div><dt>Preparing for</dt><dd>{% if target %}{{ target }}{% elif profile.career_goal %}{{ profile.career_goal }}{% else %}—{% endif %}{% if profile.target_year %}, {{ profile.target_year }}{% endif %}</dd></div>
-                <div><dt>Preparation stage</dt><dd>{{ prep_label|default:"—" }}</dd></div>
+                <div><dt>Goal</dt><dd>{% if target %}{{ target }}{% elif profile.career_goal %}{{ profile.career_goal }}{% else %}—{% endif %}</dd></div>
                 <div><dt>School / college</dt><dd>{{ profile.institution|default:"—" }}</dd></div>
                 <div class="rm-facts--wide"><dt>Why they joined RM</dt><dd>{{ purpose_label|default:"—" }}{% if profile.purpose_other %}: {{ profile.purpose_other }}{% endif %}</dd></div>
                 <div class="rm-facts--wide"><dt>Support they need</dt><dd>{% if profile.requirements %}{{ profile.requirements|join:", " }}{% else %}—{% endif %}{% if profile.requirements_other %} ({{ profile.requirements_other }}){% endif %}</dd></div>

@@ -426,68 +426,6 @@ def about_tab(request, pk, **kwargs):
 @login_required
 @hx_request_required
 @owner_can_enter("employee.view_employee", Employee)
-def student_progress_tab(request, pk, **kwargs):
-    """Render the admin-managed student preparation and attendance summary."""
-    from attendance.models import Attendance, AttendanceLateComeEarlyOut
-    from base.youth_centre import goal_info, is_absent, youth_info as student_youth_info
-
-    student = Employee.objects.filter(id=pk).first()
-    if not student:
-        messages.error(request, _("Student not found."))
-        return HorillaRedirect(request)
-
-    today = datetime.now().date()
-    month_start = today.replace(day=1)
-    centre_recorded_days = Attendance.objects.filter(
-        employee_id__additional_info__youth_centre__isnull=False,
-        attendance_date__gte=month_start,
-        attendance_date__lte=today,
-    ).values("attendance_date").distinct().count()
-    attendance_records = list(Attendance.objects.filter(
-        employee_id=student,
-        attendance_date__gte=month_start,
-        attendance_date__lte=today,
-    ).order_by("-attendance_date"))
-    present_records = [record for record in attendance_records if not is_absent(record)]
-    days_present = len(present_records)
-    days_absent = max(centre_recorded_days - days_present, 0)
-    attendance_percent = (
-        round(days_present / centre_recorded_days * 100, 1)
-        if centre_recorded_days
-        else 0
-    )
-    late_days = AttendanceLateComeEarlyOut.objects.filter(
-        employee_id=student,
-        type="late_come",
-        attendance_id__attendance_date__gte=month_start,
-        attendance_id__attendance_date__lte=today,
-    ).count()
-    youth_info = student_youth_info(student)
-    goal = goal_info(student)
-    return render(
-        request,
-        "tabs/student_progress_tab.html",
-        {
-            "student": student,
-            "youth_info": youth_info,
-            "attendance_percent": attendance_percent,
-            "days_present": days_present,
-            "days_absent": days_absent,
-            "late_days": late_days,
-            "goal": goal,
-            "recent_attendance": [
-                {"record": record, "absent": is_absent(record)}
-                for record in attendance_records[:10]
-            ],
-            "last_attendance": present_records[0] if present_records else None,
-            "centre_recorded_days": centre_recorded_days,
-        },
-    )
-
-
-@login_required
-@hx_request_required
-@owner_can_enter("employee.view_employee", Employee)
 def allowances_deductions_tab(request, pk):
     """
     Retrieve and render the allowances and deductions applicable to an employee.
@@ -1991,8 +1929,6 @@ def employee_create_update_personal_info(request, obj_id=None):
                     "student_initial_notes",
                     "student_goal",
                     "student_defence_entry_scheme",
-                    "student_preparation_status",
-                    "student_progress_percentage",
                     "student_admin_remarks",
                 )
             }

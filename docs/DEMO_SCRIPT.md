@@ -60,9 +60,9 @@ the students named are always the same after a fresh seed.
    them as a new student**; the name is already filled in.
    - The page says it plainly: students enroll in person, so enrolling also
      marks them present.
-   - Show the sections: goal, exam and preparation stage; the Defence entry
-     question that appears only when the goal is Defence; "date of birth, or
-     approximate age".
+   - Show the sections: goal and exam; the Defence entry question that
+     appears only when the goal is Defence; "date of birth, or approximate
+     age".
    - **Enroll and mark present** saves the student and records today as their
      first visit. Back at the desk, he's in today's list with an **Enrolled**
      tag instead of a remove button: the enrollment day can't be deleted on
@@ -155,8 +155,7 @@ the students named are always the same after a fresh seed.
    Switch between 30, 60 and 90 days.
 2. **Career goals**: each goal group's split between active, slipping away
    and inactive; Defence entry schemes (NDA, TES, CDS, AFCAT, Agniveer, TA /
-   JKLI) and other exams (UPSC, JKAS, JKSSB, JEE and more); how far along each
-   group is in their preparation; which years their exams are in.
+   JKLI) and other exams (UPSC, JKAS, JKSSB, JEE and more).
 3. **Analytics**:
    - It opens on **Active students**, the people who actually use the centre;
      switch to **Everyone enrolled** to compare. Filter by goal.
@@ -200,10 +199,11 @@ attendance registers, and flags any visit dated before a student enrolled.
   moves with it. A student enrolled by mistake can be removed.
 - **What counts as an open day?** A day with at least 5 visits, so a stray
   mark on a Sunday doesn't count.
-- **How is a student's progress tracked?** Three ways: whether they keep
-  coming (the status), where they are in their preparation (the stage, exam
-  and exam year on their details), and how things turned out (selected,
-  joined a course), recorded from calls.
+- **How is a student's progress tracked?** Three ways, each with a clear
+  source: attendance (whether they keep coming, recorded at the desk), their
+  goal (entered once at enrollment), and follow-up calls (what they're doing
+  now, and whether they were selected or joined a course). Nobody has to
+  keep a progress score up to date.
 - **Can it use our existing register?** Yes, through the spreadsheet import.
 
 ## After the demo

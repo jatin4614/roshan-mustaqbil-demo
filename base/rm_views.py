@@ -20,7 +20,7 @@ from base.rm import (
 )
 from base.rm_access import rm_required
 from base.rm_common import (
-    OUTCOME_LABELS, PREP_LABELS, PURPOSE_LABELS, STATUS_LABELS, age_label, checkin_rows,
+    OUTCOME_LABELS, PURPOSE_LABELS, STATUS_LABELS, age_label, checkin_rows,
     day_checkins, goal_url, is_open, status_url, student_values, students_url, today_label,
     typical_by_now, visits_per_day,
 )
@@ -306,16 +306,6 @@ def career_goals(request):
             return ""
         return students_url(target=label)
 
-    stage_order = [value for value, _ in StudentProfile.PREP_STAGES] + [NOT_RECORDED]
-    stage_keys = {value: f"age-{index}" for index, value in enumerate(stage_order[:-1])}
-    stage_keys[NOT_RECORDED] = "age-6"
-    stages_by_goal = [
-        (goal, Counter(row["prep_stage"] or NOT_RECORDED for row in by_goal.get(goal, [])), goal_url(goal), GOAL_KEYS.get(goal, "muted"))
-        for goal in goals if by_goal.get(goal)
-    ]
-    stages_present = {stage for _, counter, _, _ in stages_by_goal for stage in counter}
-    years = Counter(row["target_year"] for row in rows if row["target_year"] and row["target_year"] >= today.year)
-    year_points = [{"label": str(year), "tip": f"Exam in {year}", "value": years[year]} for year in sorted(years)[:5]]
     context = {
         "today_label": today_label(today), "total": total, "cards": cards,
         "engagement_legend": [{"label": ENGAGEMENT_LABELS[status], "key": ENGAGEMENT_KEYS[status]} for status in ENGAGEMENT_STATUSES],
@@ -323,10 +313,6 @@ def career_goals(request):
         "defence_total": len(defence),
         "exams": charts.bars(exams, total=exam_total, keys={"Other exams": "muted", NOT_RECORDED: "muted"}, url=target_link),
         "exam_total": exam_total,
-        "stages": charts.stacked_rows(stages_by_goal, stage_order, stage_keys, PREP_LABELS),
-        "stage_legend": [{"label": PREP_LABELS.get(stage, stage), "key": stage_keys[stage]} for stage in stage_order if stage in stages_present],
-        "years": charts.columns(year_points, unit="student") if year_points else None,
-        "no_year": sum(1 for row in rows if not row["target_year"]),
     }
     return render(request, "rm/career_goals.html", context)
 

@@ -64,13 +64,6 @@
                     </select>
                 </div>
                 <div class="rm-field">
-                    <label for="f-stage">Preparation stage</label>
-                    <select id="f-stage" name="prep_stage" data-autosubmit>
-                        <option value="">Any stage</option>
-                        {% for value, label in prep_stages %}<option value="{{ value }}"{% if filters.prep_stage == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div class="rm-field">
                     <label for="f-locality">Area (tehsil)</label>
                     <select id="f-locality" name="locality" data-autosubmit>
                         <option value="">Any area</option>

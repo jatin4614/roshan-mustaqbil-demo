@@ -22,9 +22,8 @@ GENDER_LABELS = {value: str(label) for value, label in Employee.choice_gender}
 STATUS_LABELS = dict(StudentProfile.CURRENT_STATUSES)
 OUTCOME_LABELS = dict(StudentProfile.OUTCOMES)
 PURPOSE_LABELS = dict(StudentProfile.PURPOSES)
-PREP_LABELS = dict(StudentProfile.PREP_STAGES)
 PROFILE_FIELDS = (
-    "career_goal", "defence_entry", "target_exam", "goal_detail", "prep_stage", "target_year", "locality",
+    "career_goal", "defence_entry", "target_exam", "goal_detail", "locality",
     "current_status", "last_followup_date", "next_call_date", "outcome", "outcome_date", "purpose_of_rm",
     "requirements", "registration_date", "expectations",
 )

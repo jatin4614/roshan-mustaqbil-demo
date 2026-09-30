@@ -33,6 +33,7 @@ REMOVED_WORDING = (
     ("Never Attended", re.compile(r"Never Attended")),
     ('"Never came" status', re.compile(r"never came(?! back)", re.IGNORECASE)),
     ("staff roles (front desk / coordinator)", re.compile(r"\bfront desk\b|\bcoordinator\b", re.IGNORECASE)),
+    ("preparation stage and exam year", re.compile(r"preparation stage|prep_stage|exam year|target_year|exam_year", re.IGNORECASE)),
 )
 
 

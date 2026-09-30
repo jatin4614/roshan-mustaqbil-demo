@@ -24,7 +24,7 @@ from base.rm import (
 )
 from base.rm_access import rm_required
 from base.rm_common import (
-    GENDER_LABELS, OUTCOME_LABELS, PAGE_SIZE, PREP_LABELS, PURPOSE_LABELS, STATUS_LABELS,
+    GENDER_LABELS, OUTCOME_LABELS, PAGE_SIZE, PURPOSE_LABELS, STATUS_LABELS,
     csv_response, today_label,
 )
 from employee.models import Employee, StudentFollowUp, StudentProfile
@@ -76,10 +76,8 @@ class StudentRegistrationForm(forms.Form):
     institution = forms.CharField(required=False, label="School / college")
     career_goal = forms.ChoiceField(choices=(("", "Select career goal"), *StudentProfile.CAREER_GOALS), required=False, label="Career goal")
     defence_entry = forms.ChoiceField(choices=(("", "Select entry scheme"), *StudentProfile.DEFENCE_ENTRIES), required=False, label="Defence entry scheme")
-    target_exam = forms.ChoiceField(choices=(("", "Select exam"), *StudentProfile.TARGET_EXAMS), required=False, label="Exam they're preparing for")
+    target_exam = forms.ChoiceField(choices=(("", "Select exam"), *StudentProfile.TARGET_EXAMS), required=False, label="Exam they're aiming for")
     goal_detail = forms.CharField(max_length=200, required=False, label="Describe the goal")
-    prep_stage = forms.ChoiceField(choices=(("", "Select stage"), *StudentProfile.PREP_STAGES), required=False, label="How far along is their preparation?")
-    target_year = forms.IntegerField(required=False, label="Exam year", widget=forms.NumberInput(attrs={"inputmode": "numeric", "placeholder": "e.g. 2027"}))
     purpose_of_rm = forms.ChoiceField(choices=(("", "Select purpose"), *StudentProfile.PURPOSES), required=False, label="Main reason for enrolling")
     purpose_other = forms.CharField(required=False, label="Describe the reason")
     requirements = forms.MultipleChoiceField(required=False, label="What support do they need?", choices=[(item, item) for item in StudentProfile.REQUIREMENT_CHOICES], widget=forms.CheckboxSelectMultiple)
@@ -93,7 +91,7 @@ class StudentRegistrationForm(forms.Form):
 
     SECTIONS = (
         ("Student details", "Who they are and how to reach them.", ("full_name", "phone", "gender", "dob", "age", "locality", "address", "email", "registration_number", "registration_date")),
-        ("Goal and preparation", "What they're working towards and where they are now.", ("career_goal", "defence_entry", "target_exam", "goal_detail", "prep_stage", "target_year", "qualification", "qualification_other", "institution")),
+        ("Goal and studies", "What they're working towards, and their studies so far.", ("career_goal", "defence_entry", "target_exam", "goal_detail", "qualification", "qualification_other", "institution")),
         ("Why they came", "Their reasons and what would help them.", ("purpose_of_rm", "purpose_other", "requirements", "requirements_other", "expectations")),
         ("Guardian and notes", "Optional, but useful for follow-up calls.", ("guardian_name", "guardian_phone", "notes")),
     )
@@ -129,9 +127,6 @@ class StudentRegistrationForm(forms.Form):
             self.add_error("registration_date", "The enrollment date can't be in the future.")
         elif values.get("registration_date") and values["registration_date"] < EARLIEST_ENROLLMENT:
             self.add_error("registration_date", f"The enrollment date is before {EARLIEST_ENROLLMENT.year}. Check the year.")
-        year = values.get("target_year")
-        if year and not today.year - 1 <= year <= today.year + 6:
-            self.add_error("target_year", f"Enter a year between {today.year - 1} and {today.year + 6}.")
         if values.get("career_goal") == "Defence" and not values.get("defence_entry"):
             self.add_error("defence_entry", "Choose the Defence entry scheme.")
         if values.get("purpose_of_rm") == "Other" and not values.get("purpose_other"):
@@ -177,7 +172,7 @@ class CallForm(forms.Form):
 
 FILTER_FIELDS = (
     "q", "engagement", "returned", "goal", "target", "purpose", "gender", "age", "locality", "requirement", "qualification",
-    "prep_stage", "registered", "contacted", "current_status", "outcome", "call", "missing", "sort",
+    "registered", "contacted", "current_status", "outcome", "call", "missing", "sort",
 )
 
 
@@ -197,7 +192,7 @@ def _filtered_students(request, inactive_only=False, today=None):
         queryset = queryset.filter(engagement_q(filters["engagement"], today))
     if filters["returned"] == "no":
         queryset = queryset.filter(no_return_q(today))
-    simple = {"purpose": "rm_profile__purpose_of_rm", "gender": "gender", "prep_stage": "rm_profile__prep_stage", "outcome": "rm_profile__outcome"}
+    simple = {"purpose": "rm_profile__purpose_of_rm", "gender": "gender", "outcome": "rm_profile__outcome"}
     for field, lookup in simple.items():
         if filters[field]:
             queryset = queryset.filter(**{lookup: filters[field]})
@@ -257,7 +252,7 @@ def _phone_counts():
 
 CHIP_NAMES = {
     "q": "Search", "engagement": "Status", "returned": "Came back after enrolling", "goal": "Goal", "target": "Exam", "purpose": "Reason", "gender": "Gender",
-    "age": "Age", "locality": "Area", "requirement": "Needs", "qualification": "Qualification", "prep_stage": "Stage",
+    "age": "Age", "locality": "Area", "requirement": "Needs", "qualification": "Qualification",
     "registered": "Enrolled", "contacted": "Contacted", "current_status": "Doing now", "outcome": "Moved on",
     "call": "Calls", "missing": "Missing",
 }
@@ -265,7 +260,7 @@ CHIP_NAMES = {
 
 def _chip_value(field, value):
     lookup = {
-        "engagement": ENGAGEMENT_LABELS, "gender": GENDER_LABELS, "purpose": PURPOSE_LABELS, "prep_stage": PREP_LABELS,
+        "engagement": ENGAGEMENT_LABELS, "gender": GENDER_LABELS, "purpose": PURPOSE_LABELS,
         "registered": REGISTERED_RANGES, "contacted": CONTACTED, "outcome": OUTCOME_LABELS, "missing": MISSING,
         "current_status": {NO_STATUS: "Not followed up yet", **STATUS_LABELS}, "call": {"due": "Waiting for a call"},
         "returned": {"no": "No"},
@@ -289,7 +284,7 @@ def _filter_chips(filters, base_url):
 def _export_students(queryset, today):
     response, writer = csv_response(f"rm-students-{today.isoformat()}.csv", [
         "Registration number", "Name", "Phone", "Gender", "Date of birth", "Age group", "Area", "Address", "Qualification",
-        "School / college", "Career goal", "Exam", "Preparation stage", "Exam year", "Reason for joining", "Support needed",
+        "School / college", "Career goal", "Exam", "Reason for joining", "Support needed",
         "Expectations", "Status", "Visits", "Last visit", "Enrolled on", "Came back after enrolling", "Guardian name",
         "Guardian phone", "Doing now", "Last contacted", "Call again on", "Follow-up notes", "Moved on", "Call list",
     ])
@@ -302,7 +297,7 @@ def _export_students(queryset, today):
         writer.writerow([
             student.badge_id, student.get_full_name(), student.phone, GENDER_LABELS.get(student.gender, ""), student.dob or "",
             age_group(student, today), profile.locality, student.address or "", student.qualification or "", profile.institution,
-            profile.career_goal, target_label(profile), PREP_LABELS.get(profile.prep_stage, ""), profile.target_year or "",
+            profile.career_goal, target_label(profile),
             PURPOSE_LABELS.get(profile.purpose_of_rm, profile.purpose_of_rm), "; ".join(profile.requirements or []),
             profile.expectations, ENGAGEMENT_LABELS[status], student.visits, student.last_visit or "", profile.registration_date,
             came_back, profile.guardian_name, profile.guardian_phone, STATUS_LABELS.get(profile.current_status, ""),
@@ -331,7 +326,7 @@ def students(request, inactive_only=False):
         rows.append(row)
     base_url = reverse("rm-inactive-students" if inactive_only else "rm-students")
     query = {key: value for key, value in filters.items() if value and not (key == "sort" and value == "name")}
-    more_fields = ("returned", "target", "purpose", "gender", "age", "locality", "requirement", "qualification", "prep_stage", "registered", "contacted", "current_status", "outcome", "missing")
+    more_fields = ("returned", "target", "purpose", "gender", "age", "locality", "requirement", "qualification", "registered", "contacted", "current_status", "outcome", "missing")
     context = {
         "rows": rows, "page": page, "filters": filters, "inactive_only": inactive_only, "base_url": base_url,
         "query": urlencode(query), "export_url": base_url + "?" + urlencode({**query, "export": "csv"}),
@@ -340,7 +335,7 @@ def students(request, inactive_only=False):
         "targets": StudentProfile.DEFENCE_ENTRIES + StudentProfile.TARGET_EXAMS[:-1], "genders": Employee.choice_gender,
         "engagements": [(status, ENGAGEMENT_LABELS[status]) for status in ALL_STATUSES],
         "age_groups": [label for _, label in AGE_BUCKETS] + [NOT_RECORDED], "localities": StudentProfile.LOCALITIES,
-        "requirements": StudentProfile.REQUIREMENT_CHOICES[:-1], "qualifications": QUALIFICATIONS, "prep_stages": StudentProfile.PREP_STAGES,
+        "requirements": StudentProfile.REQUIREMENT_CHOICES[:-1], "qualifications": QUALIFICATIONS,
         "registered_ranges": REGISTERED_RANGES.items(), "contacted_options": CONTACTED.items(), "outcomes": StudentProfile.OUTCOMES,
         "missing_options": MISSING.items(), "sorts": [(key, label) for key, (label, _) in SORTS.items()],
         "no_status": NO_STATUS, "no_value": NO_VALUE, "no_return_label": NO_RETURN_LABEL,
@@ -424,13 +419,12 @@ def enroll_student(request, student_id=None):
             student.skip_user_creation = True  # students are records, not logins
             student.save()
             profile, _ = StudentProfile.objects.get_or_create(employee=student)
-            for field in ("purpose_of_rm", "career_goal", "expectations", "requirements", "institution", "guardian_name", "guardian_phone", "notes", "locality", "prep_stage"):
+            for field in ("purpose_of_rm", "career_goal", "expectations", "requirements", "institution", "guardian_name", "guardian_phone", "notes", "locality"):
                 setattr(profile, field, values.get(field) or ([] if field == "requirements" else ""))
             goal = values.get("career_goal")
             profile.defence_entry = values["defence_entry"] if goal == "Defence" else ""
             profile.target_exam = values["target_exam"] if goal in {"UPSC / Civil Services", "Other"} else ""
             profile.goal_detail = values["goal_detail"] if goal == "Other" or profile.target_exam == "Other" else ""
-            profile.target_year = values.get("target_year")
             profile.purpose_other = values["purpose_other"] if values.get("purpose_of_rm") == "Other" else ""
             profile.requirements_other = values["requirements_other"] if "Other" in (values.get("requirements") or []) else ""
             profile.registration_date = values.get("registration_date") or profile.registration_date or today
@@ -489,7 +483,7 @@ def student_profile(request, student_id):
     context = {
         "student": student, "profile": profile, "engagement": engagement, "initials": initials(student),
         "goal_key": GOAL_KEYS.get(profile.career_goal, "none"), "age_group": age_group(student, today),
-        "target": target_label(profile), "prep_label": PREP_LABELS.get(profile.prep_stage, ""),
+        "target": target_label(profile),
         "purpose_label": PURPOSE_LABELS.get(profile.purpose_of_rm, profile.purpose_of_rm),
         "visits": visits[:12], "total_visits": len(visit_dates), "month_visits": sum(1 for day in visit_dates if day >= month_start),
         "present_today": bool(visit_dates) and visit_dates[0] == today,

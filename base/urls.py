@@ -80,13 +80,6 @@ urlpatterns = [
     path("students/<int:student_id>/edit/", rm_students.enroll_student, name="rm-edit-student"),
     path("students/<int:student_id>/remove/", rm_students.remove_student, name="rm-remove-student"),
     path("students/follow-ups/<int:followup_id>/delete/", rm_students.delete_followup, name="rm-delete-followup"),
-    # Earlier youth-centre endpoints, still used by the HR student tab.
-    path("goals/update/<int:student_id>/", rm_access.rm_required(dashboard_module.update_student_goal), name="youth-centre-goal-update"),
-    path(
-        "dashboard/api/youth-centre/",
-        rm_access.rm_required(dashboard_module.youth_centre_dashboard_data),
-        name="youth-centre-dashboard-data",
-    ),
     path(
         "dashboard/api/kpi/",
         dashboard_module.dashboard_kpi_data,

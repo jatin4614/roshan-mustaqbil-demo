@@ -26,7 +26,7 @@ SESSION_KEY = "rm_import"
 MAX_ROWS = 5000
 STUDENT_COLUMNS = (
     "registration_number", "full_name", "phone", "gender", "date_of_birth", "age", "area", "address",
-    "qualification", "school_or_college", "career_goal", "exam", "preparation_stage", "exam_year",
+    "qualification", "school_or_college", "career_goal", "exam",
     "reason_for_joining", "support_needed", "expectations", "guardian_name", "guardian_phone",
     "enrollment_date", "notes",
 )
@@ -36,7 +36,7 @@ ALIASES = {
     "contact": "phone", "dob": "date_of_birth", "birth_date": "date_of_birth", "tehsil": "area", "locality": "area",
     "village": "address", "education": "qualification", "school": "school_or_college", "college": "school_or_college",
     "institution": "school_or_college", "goal": "career_goal", "target_exam": "exam", "defence_entry": "exam",
-    "stage": "preparation_stage", "prep_stage": "preparation_stage", "target_year": "exam_year", "purpose": "reason_for_joining",
+    "purpose": "reason_for_joining",
     "purpose_of_rm": "reason_for_joining", "requirements": "support_needed", "needs": "support_needed",
     "registration_date": "enrollment_date", "enrolled_on": "enrollment_date", "reg_no": "registration_number",
     "registration_no": "registration_number", "reg_number": "registration_number", "visit_date": "date", "check_in": "time",
@@ -148,9 +148,6 @@ def _check_students(rows):
         values["target_exam"] = _match(exam_text, StudentProfile.TARGET_EXAMS) if values["career_goal"] in {"UPSC / Civil Services", "Other"} else ""
         if exam_text and not (values["defence_entry"] or values["target_exam"]) and values["career_goal"] not in {"NEET UG", "NEET PG"}:
             values["goal_detail"] = (values["goal_detail"] + " " + exam_text).strip()
-        values["prep_stage"] = _match(row.get("preparation_stage"), StudentProfile.PREP_STAGES)
-        year = row.get("exam_year", "")
-        values["target_year"] = int(year) if year.isdigit() and 2000 < int(year) < 2100 else None
         area = row.get("area", "")
         values["locality"] = _match(area, StudentProfile.LOCALITIES) or ("Other" if area else "")
         values["address"] = ", ".join(part for part in (row.get("address", ""), area if values["locality"] == "Other" else "") if part)
@@ -283,8 +280,8 @@ def _import_students(checked, user=None):
     for employee, values in zip(employees, rows):
         profiles.append(StudentProfile(
             employee=created[employee.email], career_goal=values["career_goal"], defence_entry=values["defence_entry"],
-            target_exam=values["target_exam"], goal_detail=values["goal_detail"], prep_stage=values["prep_stage"],
-            target_year=values["target_year"], locality=values["locality"], purpose_of_rm=values["purpose_of_rm"],
+            target_exam=values["target_exam"], goal_detail=values["goal_detail"],
+            locality=values["locality"], purpose_of_rm=values["purpose_of_rm"],
             purpose_other=values["purpose_other"], requirements=values["requirements"], requirements_other=values["requirements_other"],
             expectations=values["expectations"], institution=values["institution"], guardian_name=values["guardian_name"],
             guardian_phone=values["guardian_phone"], notes=values["notes"],
@@ -331,7 +328,7 @@ def import_data(request):
         columns = STUDENT_COLUMNS if kind == "students" else VISIT_COLUMNS
         response, writer = csv_response(f"rm-{kind}-template.csv", columns)
         if kind == "students":
-            writer.writerow(["", "Asma Lone", "9419012345", "Female", "2006-04-15", "", "Handwara", "Qalamabad", "Class 12", "Govt. Degree College Handwara", "NEET UG", "", "Building basics", "2026", "Competitive exam preparation", "Study Space; Mock Tests", "Quiet place to study", "Nazir Lone", "9596012345", "2024-06-01", ""])
+            writer.writerow(["", "Asma Lone", "9419012345", "Female", "2006-04-15", "", "Handwara", "Qalamabad", "Class 12", "Govt. Degree College Handwara", "NEET UG", "", "Competitive exam preparation", "Study Space; Mock Tests", "Quiet place to study", "Nazir Lone", "9596012345", "2024-06-01", ""])
         else:
             writer.writerow(["RM-0001", "", "2024-06-03", "10:15"])
         return response
